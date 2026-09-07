@@ -1,0 +1,273 @@
+{
+  "analysis_id": "ana_mvp001",
+  "access": "full",
+  "period": {
+    "from": "2026-08-22",
+    "to": "2026-09-07"
+  },
+  "summary": {
+    "total_spent_mxn": 2847.23,
+    "receipt_count": 3,
+    "item_count": 63,
+    "store_count": 2,
+    "store_names": ["Soriana Hiper", "Oxxo"]
+  },
+  "categories": [
+    {
+      "id": "proteina",
+      "label": "Proteína",
+      "total_mxn": 882.64,
+      "share": 0.31
+    },
+    {
+      "id": "abarrotes",
+      "label": "Abarrotes",
+      "total_mxn": 626.39,
+      "share": 0.22
+    },
+    {
+      "id": "bebidas",
+      "label": "Bebidas",
+      "total_mxn": 512.5,
+      "share": 0.18
+    },
+    {
+      "id": "lacteos",
+      "label": "Lácteos",
+      "total_mxn": 398.61,
+      "share": 0.14
+    },
+    {
+      "id": "limpieza",
+      "label": "Limpieza",
+      "total_mxn": 256.05,
+      "share": 0.09
+    },
+    {
+      "id": "frutas_verduras",
+      "label": "Frutas y verduras",
+      "total_mxn": 171.04,
+      "share": 0.06
+    }
+  ],
+  "personality": {
+    "id": "personality_norteno_constitucional",
+    "emoji": "🥩",
+    "title": "El Norteño Constitucional",
+    "one_liner": "La carne no es una categoría. Es infraestructura.",
+    "description": "Tu categoría dominante fue proteína y apareció en varios de tus tickets.",
+    "evidence": [
+      {
+        "metric": "category_share",
+        "label": "Proteína",
+        "value": 0.31
+      }
+    ],
+    "share_text": "Al parecer para mí la carne no es comida. Es infraestructura."
+  },
+  "basic_savings": {
+    "available": true,
+    "headline": "La Coca-Cola no costó lo mismo en todos lados",
+    "detail": "El mismo producto normalizado apareció a distinto precio por litro en Soriana Hiper y Oxxo.",
+    "modeled_difference_mxn": 13.75,
+    "evidence": [
+      {
+        "metric": "unit_price_mxn_per_l",
+        "label": "Soriana Hiper",
+        "value": 16.5
+      },
+      {
+        "metric": "unit_price_mxn_per_l",
+        "label": "Oxxo",
+        "value": 22.0
+      }
+    ]
+  },
+  "share_payload": {
+    "template": "personality",
+    "brand": "Lleno",
+    "emoji": "🥩",
+    "title": "El Norteño Constitucional",
+    "primary_text": "La carne no es una categoría. Es infraestructura.",
+    "stat": {
+      "label": "de mi despensa fue proteína",
+      "display_value": "31%"
+    },
+    "footer": "lleno.io"
+  },
+  "full": {
+    "recurring_products": [
+      {
+        "product_id": "prd_coca_cola_original_2_5l",
+        "canonical_name": "Coca-Cola Original",
+        "size_label": "2.5 L",
+        "purchase_count": 3,
+        "observed_min_unit_price_mxn": 16.5,
+        "observed_max_unit_price_mxn": 22.0,
+        "unit": "L"
+      },
+      {
+        "product_id": "prd_leche_lala_entera_1l",
+        "canonical_name": "Leche Lala Entera",
+        "size_label": "1 L",
+        "purchase_count": 2,
+        "observed_min_unit_price_mxn": 23.5,
+        "observed_max_unit_price_mxn": 26.9,
+        "unit": "L"
+      }
+    ],
+    "store_comparison": [
+      {
+        "product_id": "prd_coca_cola_original_2_5l",
+        "canonical_name": "Coca-Cola Original 2.5 L",
+        "stores": [
+          {
+            "name": "Soriana Hiper",
+            "unit_price_mxn": 41.25,
+            "normalized_unit_price_mxn": 16.5,
+            "unit": "L"
+          },
+          {
+            "name": "Oxxo",
+            "unit_price_mxn": 55.0,
+            "normalized_unit_price_mxn": 22.0,
+            "unit": "L"
+          }
+        ]
+      }
+    ],
+    "price_history": [
+      {
+        "product_id": "prd_coca_cola_original_2_5l",
+        "canonical_name": "Coca-Cola Original 2.5 L",
+        "observations": [
+          {
+            "date": "2026-08-22",
+            "store_name": "Soriana Hiper",
+            "unit_price_mxn": 16.5,
+            "unit": "L"
+          },
+          {
+            "date": "2026-08-30",
+            "store_name": "Oxxo",
+            "unit_price_mxn": 22.0,
+            "unit": "L"
+          },
+          {
+            "date": "2026-09-06",
+            "store_name": "Soriana Hiper",
+            "unit_price_mxn": 16.9,
+            "unit": "L"
+          }
+        ]
+      }
+    ],
+    "unit_price_insights": [
+      {
+        "product_id": "prd_coca_cola_original_2_5l",
+        "canonical_name": "Coca-Cola Original",
+        "size_label": "2.5 L",
+        "price_per_l_mxn": 16.5,
+        "pack_count": 1
+      },
+      {
+        "product_id": "prd_bistec_res_kg",
+        "canonical_name": "Bistec de res",
+        "size_label": "1 kg",
+        "price_per_kg_mxn": 189.9,
+        "pack_count": 1
+      }
+    ],
+    "patterns": [
+      {
+        "type": "category_concentration",
+        "title": "La proteína manda",
+        "summary": "Casi un tercio de tu despensa se fue en proteína, y apareció en más de un ticket.",
+        "evidence": [
+          {
+            "metric": "category_share",
+            "label": "Proteína",
+            "value": 0.31
+          }
+        ]
+      },
+      {
+        "type": "store_concentration",
+        "title": "Soriana se quedó con el carrito",
+        "summary": "La mayor parte del gasto observado ocurrió en un solo comercio.",
+        "evidence": [
+          {
+            "metric": "store_share",
+            "label": "Soriana Hiper",
+            "value": 0.78
+          }
+        ]
+      },
+      {
+        "type": "average_ticket",
+        "title": "Tickets de tamaño medio",
+        "summary": "El ticket promedio de este periodo fue de $949.08.",
+        "evidence": [
+          {
+            "metric": "average_ticket_mxn",
+            "label": "Ticket promedio",
+            "value": 949.08
+          }
+        ]
+      },
+      {
+        "type": "recurring_products",
+        "title": "La Coca ya es costumbre",
+        "summary": "Coca-Cola Original 2.5 L apareció en los tres tickets.",
+        "evidence": [
+          {
+            "metric": "purchase_count",
+            "label": "Coca-Cola Original 2.5 L",
+            "value": 3
+          }
+        ]
+      }
+    ],
+    "detailed_savings": {
+      "modeled_savings_mxn": 186.4,
+      "disclaimer": "Si los productos recurrentes se hubieran pagado al precio unitario normalizado más bajo que tú mismo observaste en este periodo, la diferencia modelada habría sido de aproximadamente $186.40. Es una estimación histórica, no un ahorro garantizado.",
+      "basis": "lowest_observed_normalized_unit_price"
+    },
+    "insights": [
+      {
+        "id": "ins_proteina_dominante",
+        "title": "Tu despensa tiene cimientos de carne",
+        "body": "La proteína representó el 31% del gasto y no fue un capricho de un solo ticket: se repitió en el periodo.",
+        "evidence": [
+          {
+            "metric": "category_share",
+            "label": "Proteína",
+            "value": 0.31
+          }
+        ]
+      },
+      {
+        "id": "ins_precio_coca",
+        "title": "El mismo refresco, distinto litro",
+        "body": "Coca-Cola Original te salió desde $16.50 hasta $22.00 por litro, solo con los precios de tus propios tickets.",
+        "evidence": [
+          {
+            "metric": "observed_min_unit_price_mxn",
+            "label": "Coca-Cola Original",
+            "value": 16.5
+          },
+          {
+            "metric": "observed_max_unit_price_mxn",
+            "label": "Coca-Cola Original",
+            "value": 22.0
+          }
+        ]
+      }
+    ]
+  },
+  "upgrade": {
+    "available": false,
+    "price_mxn": 109.0,
+    "max_receipts": 15
+  }
+}

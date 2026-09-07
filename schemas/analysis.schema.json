@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lleno.io/contract/schemas/analysis.schema.json",
+  "title": "Analysis",
+  "description": "Analysis resource returned by POST /analyses, GET /analyses, and GET /analyses/{analysis_id}. mode stays \"free\" after payment; capacity and access change via entitlement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "mode",
+    "status",
+    "max_receipts",
+    "receipt_count",
+    "created_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^ana_",
+      "examples": ["ana_xxx"]
+    },
+    "mode": {
+      "type": "string",
+      "const": "free",
+      "description": "Creation mode. MVP only creates free analyses. Payment does not change this field."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "created",
+        "uploading",
+        "ready_to_process",
+        "queued",
+        "processing",
+        "needs_review",
+        "generating_report",
+        "completed",
+        "failed",
+        "expired"
+      ]
+    },
+    "max_receipts": {
+      "type": "integer",
+      "enum": [3, 15],
+      "description": "3 for free. 15 after the analysis is entitled."
+    },
+    "receipt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "progress": {
+      "description": "Present while status is queued, processing, generating_report, or needs_review. Omit when not in flight.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "percent", "message"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque snake_case processing stage.",
+          "examples": ["normalizing_products"]
+        },
+        "percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Mexican Spanish user-facing status. Must not leak PII."
+        }
+      }
+    }
+  }
+}

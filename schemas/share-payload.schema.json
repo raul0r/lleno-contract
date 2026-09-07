@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lleno.io/contract/schemas/share-payload.schema.json",
+  "title": "SharePayload",
+  "description": "Sanitized factual content for a social card. The API owns this payload. The APP owns visual rendering/export. MUST NOT include exact total spending, payment details, personal identifiers, loyalty identifiers, addresses, receipt numbers, or card information.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "template",
+    "brand",
+    "emoji",
+    "title",
+    "primary_text",
+    "stat",
+    "footer"
+  ],
+  "properties": {
+    "template": {
+      "type": "string",
+      "const": "personality"
+    },
+    "brand": {
+      "type": "string",
+      "const": "Lleno"
+    },
+    "emoji": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primary_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "display_value"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Caption for the stat. Mexican Spanish. No exact total spent.",
+          "examples": ["de mi despensa fue proteína"]
+        },
+        "display_value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Already-formatted display value for the card.",
+          "examples": ["31%"]
+        }
+      }
+    },
+    "footer": {
+      "type": "string",
+      "const": "lleno.io"
+    }
+  }
+}

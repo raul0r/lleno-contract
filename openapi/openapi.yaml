@@ -1,0 +1,915 @@
+openapi: 3.1.0
+info:
+  title: Lleno API
+  version: 0.1.0
+  summary: Product API for Despensa Wrapped (Lleno MVP)
+  description: |
+    Canonical HTTP contract for `api.lleno.io`.
+
+    Market: Mexico. Language: Spanish. Currency: MXN.
+
+    Both `lleno-app` and `lleno-api` MUST implement against this document.
+    Do not invent incompatible endpoints, fields, states, business rules,
+    limits, or workflows.
+
+    Authentication: the app establishes anonymous Supabase Auth. Every
+    authenticated request sends `Authorization: Bearer <supabase-jwt>`.
+    The API derives identity from the token. Clients MUST NOT submit
+    arbitrary `user_id` ownership fields.
+
+    Errors always use the `Error` envelope. Do not expose stack traces.
+
+    Conventional HTTP status mapping for `error.code` (the frozen narrative
+    contract specifies the envelope and codes, not numeric statuses):
+
+    | code | status |
+    | --- | --- |
+    | UNAUTHORIZED | 401 |
+    | FORBIDDEN | 403 |
+    | ANALYSIS_NOT_FOUND | 404 |
+    | UPLOAD_NOT_FOUND | 404 |
+    | INVALID_FILE_TYPE | 400 |
+    | FILE_TOO_LARGE | 400 |
+    | VALIDATION_ERROR | 400 |
+    | PAYMENT_REQUIRED | 402 |
+    | PAYMENT_FAILED | 402 |
+    | RECEIPT_LIMIT_REACHED | 409 |
+    | PROCESSING_ALREADY_STARTED | 409 |
+    | REVIEW_REQUIRED | 409 |
+    | REPORT_NOT_READY | 409 |
+    | PROCESSING_FAILED | 409 |
+    | RATE_LIMITED | 429 |
+    | INTERNAL_ERROR | 500 |
+
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.0`.
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.lleno.io/v1
+    description: Production
+
+tags:
+  - name: Health
+  - name: Me
+  - name: Analyses
+  - name: Uploads
+  - name: Processing
+  - name: Review
+  - name: Reports
+  - name: Payments
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+                version: "0.1.0"
+
+  /me:
+    get:
+      tags: [Me]
+      operationId: getMe
+      summary: Current user
+      description: |
+        Profile, household, and entitlements for the caller derived from
+        the bearer token. The first session is anonymous.
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+              example:
+                profile_id: prf_xxx
+                anonymous: true
+                household_id: hh_xxx
+                entitlements: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses:
+    get:
+      tags: [Analyses]
+      operationId: listAnalyses
+      summary: List analysis history
+      description: Caller's analyses, newest first. No pagination in MVP.
+      responses:
+        "200":
+          description: Analyses newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "../schemas/analysis.schema.json"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    post:
+      tags: [Analyses]
+      operationId: createAnalysis
+      summary: Create a free analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnalysisRequest"
+            example:
+              mode: free
+      responses:
+        "201":
+          description: Analysis created.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/analysis.schema.json"
+              example:
+                id: ana_xxx
+                mode: free
+                status: created
+                max_receipts: 3
+                receipt_count: 0
+                created_at: "2026-09-07T15:41:08Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    get:
+      tags: [Analyses]
+      operationId: getAnalysis
+      summary: Get analysis
+      responses:
+        "200":
+          description: Analysis, including progress when in flight.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/analysis.schema.json"
+              examples:
+                processing:
+                  $ref: "#/components/examples/ProcessingAnalysis"
+                needsReview:
+                  $ref: "#/components/examples/NeedsReviewAnalysis"
+                failed:
+                  $ref: "#/components/examples/FailedAnalysis"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/uploads:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    post:
+      tags: [Uploads]
+      operationId: createUploads
+      summary: Request signed upload slots
+      description: |
+        Issues short-lived signed URLs. The browser uploads directly to
+        private object storage.
+
+        API validates entitlement, remaining receipt capacity, MIME type,
+        and allowed size.
+
+        Allowed content types: `image/jpeg`, `image/png`, `application/pdf`.
+        Allowed filename extensions: JPG, JPEG, PNG, PDF.
+
+        Remaining capacity is `max_receipts - receipt_count` (3 free, 15 full).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUploadsRequest"
+            example:
+              files:
+                - filename: ticket.jpg
+                  content_type: image/jpeg
+                  size_bytes: 2849442
+      responses:
+        "200":
+          description: Signed upload slots.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateUploadsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/uploads/complete:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    post:
+      tags: [Uploads]
+      operationId: completeUploads
+      summary: Confirm uploads
+      description: |
+        Validates that each object exists in private storage. Receipts
+        move from `pending_upload` to `uploaded`. Analysis moves toward
+        `ready_to_process` when at least one receipt is uploaded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteUploadsRequest"
+            example:
+              receipt_ids: [rec_xxx]
+      responses:
+        "200":
+          description: Uploads confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/analysis.schema.json"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Analysis or upload not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/process:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    post:
+      tags: [Processing]
+      operationId: startProcessing
+      summary: Start processing
+      description: |
+        Must be idempotent. Repeating the call on an already queued or
+        processing analysis MUST NOT start a second job.
+      responses:
+        "200":
+          description: Processing accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessResponse"
+              example:
+                analysis_id: ana_xxx
+                status: queued
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/review:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    get:
+      tags: [Review]
+      operationId: getReview
+      summary: Get review issues
+      description: |
+        Lightweight review of ambiguous items only. Frontend copy example:
+        "Encontramos 63 productos. 3 necesitan tu ayuda."
+      responses:
+        "200":
+          description: Review issues.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+              example:
+                analysis_id: ana_xxx
+                total_items: 63
+                issues:
+                  - id: review_xxx
+                    receipt_id: rec_xxx
+                    item_id: item_xxx
+                    raw_label: CC PET 2.5
+                    suggested_name: Coca-Cola Original 2.5 L
+                    quantity: 1
+                    line_total: 44.0
+                    confidence: 0.67
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/review/{issue_id}:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+      - $ref: "#/components/parameters/IssueId"
+    patch:
+      tags: [Review]
+      operationId: updateReviewIssue
+      summary: Update a review item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReviewIssueRequest"
+            examples:
+              accept:
+                value:
+                  action: accept
+              edit:
+                value:
+                  action: edit
+                  product_name: Coca-Cola Original
+                  quantity: 1
+                  size_value: 2.5
+                  size_unit: L
+                  line_total: 44.0
+              remove:
+                value:
+                  action: remove
+              unrecognized:
+                value:
+                  action: unrecognized
+      responses:
+        "200":
+          description: Issue updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewIssue"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/review/confirm:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    post:
+      tags: [Review]
+      operationId: confirmReview
+      summary: Confirm review and continue generation
+      responses:
+        "200":
+          description: Analysis continued.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/analysis.schema.json"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/report:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    get:
+      tags: [Reports]
+      operationId: getReport
+      summary: Get Wrapped report
+      description: |
+        Available only when analysis `status` is `completed`.
+
+        Free: `access=free`, `full=null`, `upgrade.available=true`.
+        Full: `access=full`, `full` populated.
+
+        Arithmetic is deterministic. Personality and insight wording may
+        come from AI but must be schema-validated and evidence-grounded.
+      responses:
+        "200":
+          description: Report.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/report.schema.json"
+              examples:
+                free:
+                  $ref: "#/components/examples/FreeReport"
+                full:
+                  $ref: "#/components/examples/FullReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/checkout:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    post:
+      tags: [Payments]
+      operationId: createCheckout
+      summary: Create one-time checkout
+      description: |
+        One-time MXN purchase for this analysis. Amount is
+        `FULL_REPORT_PRICE_MXN`, a configured constant, not FX-derived.
+
+        Payment provider implementation belongs to the API.
+        Payment callbacks/webhooks MUST be verified server-side.
+        Payment success creates entitlement for this analysis.
+      responses:
+        "200":
+          description: Checkout session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkout"
+              example:
+                checkout_id: chk_xxx
+                checkout_url: https://pay.example/checkout/chk_xxx
+                amount_mxn: 109
+                currency: MXN
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /analyses/{analysis_id}/entitlement:
+    parameters:
+      - $ref: "#/components/parameters/AnalysisId"
+    get:
+      tags: [Payments]
+      operationId: getEntitlement
+      summary: Payment / entitlement status
+      responses:
+        "200":
+          description: Entitlement for this analysis.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entitlement"
+              examples:
+                unpaid:
+                  value:
+                    access: free
+                    max_receipts: 3
+                    payment_status: unpaid
+                paid:
+                  value:
+                    access: full
+                    max_receipts: 15
+                    payment_status: paid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/AnalysisNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase JWT. Anonymous auth is required for MVP.
+
+  parameters:
+    AnalysisId:
+      name: analysis_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^ana_"
+    IssueId:
+      name: issue_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^review_"
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Inicia sesión para continuar.
+              details: {}
+    Forbidden:
+      description: Authenticated but not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: FORBIDDEN
+              message: No tienes acceso a este análisis.
+              details: {}
+    AnalysisNotFound:
+      description: Analysis does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: ANALYSIS_NOT_FOUND
+              message: No encontramos este análisis.
+              details: {}
+    BadRequest:
+      description: Validation, file type, or file size error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: |
+        State conflict. Codes include RECEIPT_LIMIT_REACHED,
+        PROCESSING_ALREADY_STARTED, REVIEW_REQUIRED, REPORT_NOT_READY,
+        PROCESSING_FAILED.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: RECEIPT_LIMIT_REACHED
+              message: Este análisis ya alcanzó el máximo de tickets.
+              details: {}
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Demasiadas solicitudes. Intenta de nuevo en un momento.
+              details: {}
+
+  examples:
+    ProcessingAnalysis:
+      summary: Analysis while processing
+      externalValue: ../fixtures/processing-analysis.json
+    NeedsReviewAnalysis:
+      summary: Analysis waiting on lightweight review
+      externalValue: ../fixtures/needs-review.json
+    FailedAnalysis:
+      summary: Failed analysis
+      externalValue: ../fixtures/failed-analysis.json
+    FreeReport:
+      summary: Free Wrapped
+      externalValue: ../fixtures/free-report.json
+    FullReport:
+      summary: Full Wrapped
+      externalValue: ../fixtures/full-report.json
+
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          const: ok
+        version:
+          type: string
+          minLength: 1
+
+    Me:
+      type: object
+      additionalProperties: false
+      required: [profile_id, anonymous, household_id, entitlements]
+      properties:
+        profile_id:
+          type: string
+          minLength: 1
+        anonymous:
+          type: boolean
+        household_id:
+          type: string
+          minLength: 1
+        entitlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entitlement"
+
+    CreateAnalysisRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          const: free
+
+    CreateUploadsRequest:
+      type: object
+      additionalProperties: false
+      required: [files]
+      properties:
+        files:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [filename, content_type, size_bytes]
+            properties:
+              filename:
+                type: string
+                minLength: 1
+              content_type:
+                type: string
+                enum:
+                  - image/jpeg
+                  - image/png
+                  - application/pdf
+              size_bytes:
+                type: integer
+                exclusiveMinimum: 0
+
+    CreateUploadsResponse:
+      type: object
+      additionalProperties: false
+      required: [uploads]
+      properties:
+        uploads:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [receipt_id, upload_url, expires_at, required_headers]
+            properties:
+              receipt_id:
+                type: string
+                pattern: "^rec_"
+              upload_url:
+                type: string
+                format: uri
+                description: Short-lived signed URL. Never log it.
+              expires_at:
+                type: string
+                format: date-time
+              required_headers:
+                type: object
+                additionalProperties:
+                  type: string
+
+    CompleteUploadsRequest:
+      type: object
+      additionalProperties: false
+      required: [receipt_ids]
+      properties:
+        receipt_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: "^rec_"
+
+    ProcessResponse:
+      type: object
+      additionalProperties: false
+      required: [analysis_id, status]
+      properties:
+        analysis_id:
+          type: string
+          pattern: "^ana_"
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - needs_review
+            - generating_report
+            - completed
+            - failed
+
+    Review:
+      type: object
+      additionalProperties: false
+      required: [analysis_id, total_items, issues]
+      properties:
+        analysis_id:
+          type: string
+          pattern: "^ana_"
+        total_items:
+          type: integer
+          minimum: 0
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewIssue"
+
+    ReviewIssue:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - receipt_id
+        - item_id
+        - raw_label
+        - suggested_name
+        - quantity
+        - line_total
+        - confidence
+      properties:
+        id:
+          type: string
+          pattern: "^review_"
+        receipt_id:
+          type: string
+          pattern: "^rec_"
+        item_id:
+          type: string
+          pattern: "^item_"
+        raw_label:
+          type: string
+          description: Original sanitized line. No PII.
+        suggested_name:
+          type: string
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        line_total:
+          type: number
+          description: MXN. JSON number with two decimal places.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    UpdateReviewIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [accept, edit, remove, unrecognized]
+        product_name:
+          type: string
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        size_value:
+          type: number
+          exclusiveMinimum: 0
+        size_unit:
+          type: string
+          examples: [L, ml, kg, g, piece, pack]
+        line_total:
+          type: number
+          description: MXN. JSON number with two decimal places.
+
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [checkout_id, checkout_url, amount_mxn, currency]
+      properties:
+        checkout_id:
+          type: string
+          minLength: 1
+        checkout_url:
+          type: string
+          format: uri
+        amount_mxn:
+          type: number
+          description: Configured FULL_REPORT_PRICE_MXN. JSON number with two decimal places.
+        currency:
+          type: string
+          const: MXN
+
+    Entitlement:
+      type: object
+      additionalProperties: false
+      required: [access, max_receipts, payment_status]
+      properties:
+        analysis_id:
+          type: string
+          pattern: "^ana_"
+          description: Present when the entitlement appears on GET /me. May be omitted on GET /analyses/{analysis_id}/entitlement.
+        access:
+          type: string
+          enum: [free, full]
+        max_receipts:
+          type: integer
+          enum: [3, 15]
+        payment_status:
+          type: string
+          enum: [unpaid, paid, failed]
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - ANALYSIS_NOT_FOUND
+                - INVALID_FILE_TYPE
+                - FILE_TOO_LARGE
+                - RECEIPT_LIMIT_REACHED
+                - UPLOAD_NOT_FOUND
+                - PROCESSING_ALREADY_STARTED
+                - PROCESSING_FAILED
+                - REVIEW_REQUIRED
+                - REPORT_NOT_READY
+                - PAYMENT_REQUIRED
+                - PAYMENT_FAILED
+                - RATE_LIMITED
+                - VALIDATION_ERROR
+                - INTERNAL_ERROR
+            message:
+              type: string
+              description: Mexican Spanish user-facing message. No stack traces.
+            details:
+              type: object
+              additionalProperties: true

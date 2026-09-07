@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lleno.io/contract/schemas/report.schema.json",
+  "title": "Report",
+  "description": "GET /analyses/{analysis_id}/report. Free reports set access=free and full=null. Entitled reports set access=full and populate full. Arithmetic in this document is deterministic; AI may only supply narrative fields (personality, pattern/insight wording).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "analysis_id",
+    "access",
+    "period",
+    "summary",
+    "categories",
+    "personality",
+    "basic_savings",
+    "share_payload",
+    "full",
+    "upgrade"
+  ],
+  "properties": {
+    "analysis_id": {
+      "type": "string",
+      "pattern": "^ana_"
+    },
+    "access": {
+      "type": "string",
+      "enum": ["free", "full"]
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string", "format": "date" },
+        "to": { "type": "string", "format": "date" }
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/category"
+      }
+    },
+    "personality": {
+      "$ref": "./personality.schema.json"
+    },
+    "basic_savings": {
+      "$ref": "#/$defs/basicSavings"
+    },
+    "share_payload": {
+      "$ref": "./share-payload.schema.json"
+    },
+    "full": {
+      "description": "null on free reports. Required object on full reports.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/fullReport" }
+      ]
+    },
+    "upgrade": {
+      "$ref": "#/$defs/upgrade"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "access": { "const": "free" } },
+        "required": ["access"]
+      },
+      "then": {
+        "properties": { "full": { "type": "null" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "access": { "const": "full" } },
+        "required": ["access"]
+      },
+      "then": {
+        "properties": { "full": { "$ref": "#/$defs/fullReport" } }
+      }
+    }
+  ],
+  "$defs": {
+    "money": {
+      "type": "number",
+      "description": "MXN amount serialized as a JSON number with (at most) two decimal places. Authoritative computation MUST use decimal arithmetic, not binary floats. Do not use multipleOf in validators; IEEE-754 cannot represent every cent exactly."
+    },
+    "share": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Fraction in 0–1, not a 0–100 percentage."
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "label", "value"],
+      "properties": {
+        "metric": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_spent_mxn",
+        "receipt_count",
+        "item_count",
+        "store_count",
+        "store_names"
+      ],
+      "properties": {
+        "total_spent_mxn": { "$ref": "#/$defs/money" },
+        "receipt_count": { "type": "integer", "minimum": 1 },
+        "item_count": { "type": "integer", "minimum": 0 },
+        "store_count": { "type": "integer", "minimum": 0 },
+        "store_names": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "total_mxn", "share"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "total_mxn": { "$ref": "#/$defs/money" },
+        "share": { "$ref": "#/$defs/share" }
+      }
+    },
+    "basicSavings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Empty object when the user's own data does not support an observation. Never fabricate savings.",
+      "properties": {
+        "available": { "type": "boolean" },
+        "headline": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 },
+        "modeled_difference_mxn": { "$ref": "#/$defs/money" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "price_mxn", "max_receipts"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "price_mxn": {
+          "$ref": "#/$defs/money",
+          "description": "Configured FULL_REPORT_PRICE_MXN. Not computed from FX."
+        },
+        "max_receipts": { "type": "integer", "const": 15 }
+      }
+    },
+    "fullReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recurring_products",
+        "store_comparison",
+        "price_history",
+        "unit_price_insights",
+        "patterns",
+        "detailed_savings",
+        "insights"
+      ],
+      "properties": {
+        "recurring_products": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recurringProduct" }
+        },
+        "store_comparison": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/storeComparison" }
+        },
+        "price_history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/priceHistory" }
+        },
+        "unit_price_insights": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/unitPriceInsight" }
+        },
+        "patterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pattern" }
+        },
+        "detailed_savings": { "$ref": "#/$defs/detailedSavings" },
+        "insights": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/insight" }
+        }
+      }
+    },
+    "recurringProduct": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_id",
+        "canonical_name",
+        "size_label",
+        "purchase_count",
+        "observed_min_unit_price_mxn",
+        "observed_max_unit_price_mxn",
+        "unit"
+      ],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "size_label": { "type": "string", "minLength": 1 },
+        "purchase_count": { "type": "integer", "minimum": 2 },
+        "observed_min_unit_price_mxn": { "$ref": "#/$defs/money" },
+        "observed_max_unit_price_mxn": { "$ref": "#/$defs/money" },
+        "unit": {
+          "type": "string",
+          "description": "Normalized unit for the observed unit prices (L, kg, piece, pack).",
+          "examples": ["L", "kg", "piece"]
+        }
+      }
+    },
+    "storeComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_id", "canonical_name", "stores"],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "stores": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "unit_price_mxn",
+              "normalized_unit_price_mxn",
+              "unit"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "unit_price_mxn": { "$ref": "#/$defs/money" },
+              "normalized_unit_price_mxn": { "$ref": "#/$defs/money" },
+              "unit": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "priceHistory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_id", "canonical_name", "observations"],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["date", "store_name", "unit_price_mxn", "unit"],
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "store_name": { "type": "string", "minLength": 1 },
+              "unit_price_mxn": { "$ref": "#/$defs/money" },
+              "unit": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "unitPriceInsight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_id", "canonical_name", "size_label"],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "size_label": { "type": "string", "minLength": 1 },
+        "price_per_unit_mxn": { "$ref": "#/$defs/money" },
+        "price_per_l_mxn": { "$ref": "#/$defs/money" },
+        "price_per_kg_mxn": { "$ref": "#/$defs/money" },
+        "pack_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "title", "summary", "evidence"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "recurring_products",
+            "category_concentration",
+            "store_concentration",
+            "average_ticket",
+            "spending_context",
+            "price_differences",
+            "product_alternatives"
+          ]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "detailedSavings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Historical/modelled, never guaranteed. Empty object when data does not support a model.",
+      "properties": {
+        "modeled_savings_mxn": { "$ref": "#/$defs/money" },
+        "disclaimer": { "type": "string", "minLength": 1 },
+        "basis": {
+          "type": "string",
+          "const": "lowest_observed_normalized_unit_price"
+        }
+      }
+    },
+    "insight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "body", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AI wording. All numbers in body must match evidence from deterministic analytics."
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,223 @@
+# State machine
+
+Canonical states and transitions for analyses, receipts, processing, review, and paid reprocessing.
+
+## Analysis states
+
+```text
+created
+uploading
+ready_to_process
+queued
+processing
+needs_review
+generating_report
+completed
+failed
+expired
+```
+
+### Happy path (no review)
+
+```text
+created
+→ uploading
+→ ready_to_process
+→ queued
+→ processing
+→ generating_report
+→ completed
+```
+
+### Happy path (review required)
+
+```text
+created
+→ uploading
+→ ready_to_process
+→ queued
+→ processing
+→ needs_review
+→ generating_report
+→ completed
+```
+
+Review is optional. An analysis may skip `needs_review` when confidence is sufficient.
+
+### Failure
+
+```text
+queued | processing | generating_report
+→ failed
+```
+
+### Paid reprocessing
+
+A paid analysis may transition from `completed` back to:
+
+```text
+uploading
+→ ready_to_process
+→ queued
+→ processing
+→ (needs_review)
+→ generating_report
+→ completed
+```
+
+when additional receipts are added (up to 15 total).
+
+### Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> uploading: request upload slots
+    uploading --> ready_to_process: uploads confirmed
+    ready_to_process --> queued: POST /process
+    queued --> processing
+    processing --> needs_review: low confidence items
+    processing --> generating_report: confidence ok
+    needs_review --> generating_report: review confirmed
+    generating_report --> completed
+    queued --> failed
+    processing --> failed
+    generating_report --> failed
+    completed --> uploading: paid, add receipts
+    created --> expired
+    uploading --> expired
+    queued --> expired
+    processing --> expired
+    needs_review --> expired
+    generating_report --> expired
+    failed --> expired
+    completed --> expired
+```
+
+`expired` is terminal for original-file retention and stalled work. Extracted structured purchase data is not deleted just because the raw object is gone. See [PRIVACY_RULES.md](./PRIVACY_RULES.md).
+
+## Receipt states
+
+```text
+pending_upload
+uploaded
+queued
+processing
+needs_review
+processed
+failed
+deleted
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending_upload: upload slot issued
+    pending_upload --> uploaded: object exists, complete called
+    uploaded --> queued: analysis processing started
+    queued --> processing
+    processing --> needs_review: ambiguous lines
+    processing --> processed
+    needs_review --> processed: user confirmed
+    queued --> failed
+    processing --> failed
+    pending_upload --> deleted: expiry / abort
+    uploaded --> deleted: original removed
+    processed --> deleted: original removed
+    failed --> deleted: original removed
+```
+
+Deletion of the raw object does **not** mean deleting extracted structured purchase data.
+
+`deleted` on a receipt means the original file is gone. Structured items, totals, and store data may remain.
+
+## Processing pipeline
+
+Canonical flow for each receipt, then the analysis:
+
+```text
+uploaded receipt
+      ↓
+image/PDF preparation
+      ↓
+preprocessing
+      ↓
+primary OCR
+      ↓
+receipt parser
+      ↓
+confidence evaluation
+      ↓
+fallback vision/OCR if needed
+      ↓
+PII filtering
+      ↓
+structured receipt
+      ↓
+product normalization
+      ↓
+confidence evaluation
+      ↓
+user review if necessary
+      ↓
+deterministic analytics
+      ↓
+AI narrative/personality
+      ↓
+report
+```
+
+`GET /analyses/{analysis_id}` MAY include `progress` while `status` is `queued`, `processing`, or `generating_report`:
+
+```json
+{
+  "stage": "normalizing_products",
+  "percent": 72,
+  "message": "Organizando tus compras"
+}
+```
+
+`stage` is an opaque snake_case string. `message` is Mexican Spanish, user-facing, and must not leak PII. `percent` is 0–100.
+
+`POST /analyses/{analysis_id}/process` must be idempotent. Repeating it on an already queued/processing analysis must not start a second job; it returns the current processing status.
+
+## Review loop
+
+1. Processor emits `review_issues` for ambiguous items only.
+2. Analysis enters `needs_review`.
+3. `GET /analyses/{analysis_id}/review` returns issues.
+4. Client `PATCH`es each issue with `accept`, `edit`, `remove`, or `unrecognized`.
+5. `POST /analyses/{analysis_id}/review/confirm` continues generation.
+6. Analysis enters `generating_report`.
+
+The frontend should normally show only ambiguous items, with a count of total vs. needing help.
+
+## Entitlement and capacity
+
+| Analysis access | `max_receipts` | How it is reached |
+| --- | --- | --- |
+| free | 3 | `POST /analyses` with `{ "mode": "free" }` |
+| full | 15 | verified payment webhook creates entitlement |
+
+`POST /analyses/{analysis_id}/uploads` MUST reject when remaining capacity is 0 (`RECEIPT_LIMIT_REACHED`).
+
+Uploading is only valid in `created`, `uploading`, or `completed` (completed only when entitled and under the 15-receipt cap).
+
+Processing may start only when the analysis is `ready_to_process` (or idempotently already `queued`/`processing`).
+
+Report is available only when `status` is `completed` (`REPORT_NOT_READY` otherwise).
+
+## API-facing analysis resource
+
+Minimum fields:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | `ana_…` |
+| `mode` | `"free"` at creation. Does not flip on payment. |
+| `status` | analysis state |
+| `max_receipts` | 3, or 15 after entitlement |
+| `receipt_count` | receipts accepted so far |
+| `created_at` | ISO 8601 |
+| `progress` | optional, while in-flight |
+
+Payment state is read from `GET /analyses/{analysis_id}/entitlement`, not from `mode`.

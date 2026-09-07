@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lleno.io/contract/schemas/personality.schema.json",
+  "title": "DespensaPersonality",
+  "description": "Creative, funny, data-grounded Despensa Personality. Mexican Spanish. Evidence values MUST come from deterministic analytics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "emoji",
+    "title",
+    "one_liner",
+    "description",
+    "evidence",
+    "share_text"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^personality_",
+      "examples": ["personality_xxx"]
+    },
+    "emoji": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["🥩"]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short Mexican-Spanish name. Playful, memorable, shareable. Must not infer or mock sensitive traits.",
+      "examples": ["El Norteño Constitucional"]
+    },
+    "one_liner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chusco one-liner grounded in the user's stats."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One or two sentences explaining the personality from deterministic evidence."
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "share_text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "First-person share copy. Must not include exact total spending or PII."
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "label", "value"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic metric name, snake_case.",
+          "examples": ["category_share"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "examples": ["Proteína"]
+        },
+        "value": {
+          "type": "number",
+          "description": "Authoritative numeric value from deterministic analytics. Shares are 0–1 fractions."
+        }
+      }
+    }
+  }
+}
