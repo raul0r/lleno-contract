@@ -14,7 +14,14 @@ Each FREE analysis supports `1–3` receipts.
 
 Supported formats: JPG, JPEG, PNG, PDF.
 
+Each receipt file is limited to 10485760 bytes (10 MiB). Upload URLs are
+short-lived and expire after 600 seconds.
+
 Receipts may come from any consumer purchase. Do not restrict the parser to known retailers.
+
+Free receipt capacity counts successfully uploaded receipts plus active pending
+upload slots. Expired or failed pending slots do not consume the three-receipt
+capacity and may be replaced.
 
 ## Free report
 

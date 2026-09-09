@@ -523,7 +523,12 @@ Original receipt files MUST:
 - use unguessable object keys
 - be accessible only through short-lived signed access when required
 - be deleted as soon as successful processing makes them unnecessary
-- always have a hard expiry no later than 5 hours after upload
+- always have a hard expiry no later than 5 hours after successful upload confirmation
+
+The API records `delete_after` as `uploaded_at + 5 hours`. Production storage
+lifecycle rules and scheduled cleanup must provide enough operational margin to
+remove the object by that deadline. The receipt row remains after raw-object
+deletion.
 
 Target:
 
@@ -783,6 +788,15 @@ queued/processing/generating_report
 → failed
 ```
 
+Before processing begins, a valid upload-slot request may transition
+`ready_to_process → uploading` when receipt capacity remains. Upload-slot
+issuance may also keep an analysis in `uploading` when it is already there.
+Completion moves `uploading → ready_to_process` only when at least one receipt
+is confirmed uploaded and no active pending upload slot remains. An active
+pending slot has `status=pending_upload` and `upload_expires_at > now()`.
+Expired pending slots become `failed` with an internal failure reason and do
+not consume capacity.
+
 Paid analysis may transition from `completed` back to:
 
 ```text
@@ -1014,9 +1028,10 @@ API validates:
 - entitlement
 - remaining receipt capacity
 - MIME type
-- allowed size
+- allowed size: 10485760 bytes (10 MiB) per file
 
-Browser uploads directly to R2.
+Signed PUT URLs expire after 600 seconds. The browser uploads directly to
+private R2; the API never proxies receipt bytes.
 
 ---
 
@@ -1034,7 +1049,9 @@ Request:
 }
 ```
 
-The API validates object existence.
+The API validates object existence. Any non-empty subset of issued receipt IDs
+may be confirmed. Repeating confirmation of an already uploaded receipt is
+idempotent and does not change its original `uploaded_at` or `delete_after`.
 
 ---
 
@@ -1423,7 +1440,7 @@ Both codebases pin a known contract version.
 
 Example:
 
-`LLENO_CONTRACT_VERSION=0.1.0`
+`LLENO_CONTRACT_VERSION=0.1.1`
 
 ---
 

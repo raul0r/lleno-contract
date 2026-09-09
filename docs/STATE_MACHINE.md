@@ -74,6 +74,7 @@ stateDiagram-v2
     [*] --> created
     created --> uploading: request upload slots
     uploading --> ready_to_process: uploads confirmed
+    ready_to_process --> uploading: add receipt before processing
     ready_to_process --> queued: POST /process
     queued --> processing
     processing --> needs_review: low confidence items
@@ -120,7 +121,7 @@ stateDiagram-v2
     needs_review --> processed: user confirmed
     queued --> failed
     processing --> failed
-    pending_upload --> deleted: expiry / abort
+    pending_upload --> failed: upload URL expired
     uploaded --> deleted: original removed
     processed --> deleted: original removed
     failed --> deleted: original removed
@@ -200,7 +201,19 @@ The frontend should normally show only ambiguous items, with a count of total vs
 
 `POST /analyses/{analysis_id}/uploads` MUST reject when remaining capacity is 0 (`RECEIPT_LIMIT_REACHED`).
 
-Uploading is only valid in `created`, `uploading`, or `completed` (completed only when entitled and under the 15-receipt cap).
+Uploading is valid in `created` and `uploading`. Before processing begins, a
+valid slot request may also move `ready_to_process` back to `uploading` when
+capacity remains. `completed` is uploadable only for an entitled paid analysis
+under the 15-receipt cap.
+
+An active pending slot is a `pending_upload` receipt whose
+`upload_expires_at > now()`. Capacity counts confirmed `uploaded` receipts plus
+active pending slots. Expired pending slots become `failed` internally and do
+not consume capacity.
+
+Upload completion accepts any non-empty subset of issued receipt IDs and is
+idempotent. `uploading → ready_to_process` requires at least one uploaded
+receipt and zero active pending slots.
 
 Processing may start only when the analysis is `ready_to_process` (or idempotently already `queued`/`processing`).
 

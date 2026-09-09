@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lleno API
-  version: 0.1.0
+  version: 0.1.1
   summary: Product API for Despensa Wrapped (Lleno MVP)
   description: |
     Canonical HTTP contract for `api.lleno.io`.
@@ -41,7 +41,7 @@ info:
     | RATE_LIMITED | 429 |
     | INTERNAL_ERROR | 500 |
 
-    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.0`.
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.1`.
   license:
     name: Proprietary
 
@@ -78,7 +78,7 @@ paths:
                 $ref: "#/components/schemas/Health"
               example:
                 status: ok
-                version: "0.1.0"
+                version: "0.1.1"
 
   /me:
     get:
@@ -205,6 +205,12 @@ paths:
         Allowed filename extensions: JPG, JPEG, PNG, PDF.
 
         Remaining capacity is `max_receipts - receipt_count` (3 free, 15 full).
+        A pending upload slot consumes capacity only while its upload URL is
+        active. Pending slots expire after 600 seconds. Expired or failed
+        pending slots do not consume capacity and may be replaced.
+
+        The declared file size must be between 1 and 10485760 bytes (10 MiB).
+        Signed PUT URLs expire after 600 seconds.
       requestBody:
         required: true
         content:
@@ -244,9 +250,11 @@ paths:
       operationId: completeUploads
       summary: Confirm uploads
       description: |
-        Validates that each object exists in private storage. Receipts
-        move from `pending_upload` to `uploaded`. Analysis moves toward
-        `ready_to_process` when at least one receipt is uploaded.
+        Validates that each object exists in private storage. Any non-empty
+        subset of issued receipt IDs may be confirmed, and repeated
+        confirmation is idempotent. Receipts move from `pending_upload` to
+        `uploaded`. The analysis moves to `ready_to_process` only when at
+        least one receipt is uploaded and no active pending slot remains.
       requestBody:
         required: true
         content:
@@ -706,6 +714,8 @@ components:
               size_bytes:
                 type: integer
                 exclusiveMinimum: 0
+                maximum: 10485760
+                description: Maximum 10 MiB per receipt file.
 
     CreateUploadsResponse:
       type: object
@@ -729,6 +739,7 @@ components:
               expires_at:
                 type: string
                 format: date-time
+                description: Signed PUT URL expiration, 600 seconds after issuance.
               required_headers:
                 type: object
                 additionalProperties:
