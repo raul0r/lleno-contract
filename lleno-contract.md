@@ -1063,6 +1063,14 @@ POST /analyses/{analysis_id}/process
 
 Must be idempotent.
 
+When the analysis is `ready_to_process`, the first valid request creates one
+processing run and returns `200` with `status: "queued"`. Repeating the request
+while that run is `queued` MUST return the same `200` queued response without
+creating another run. Once a processor has advanced the analysis to
+`processing`, or the analysis has entered a later processing/report state, a
+new request MUST return `409 PROCESSING_ALREADY_STARTED` and MUST NOT restart
+the run.
+
 Returns:
 
 ```json
@@ -1440,7 +1448,7 @@ Both codebases pin a known contract version.
 
 Example:
 
-`LLENO_CONTRACT_VERSION=0.1.1`
+`LLENO_CONTRACT_VERSION=0.1.2`
 
 ---
 

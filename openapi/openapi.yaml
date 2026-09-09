@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lleno API
-  version: 0.1.1
+  version: 0.1.2
   summary: Product API for Despensa Wrapped (Lleno MVP)
   description: |
     Canonical HTTP contract for `api.lleno.io`.
@@ -41,7 +41,7 @@ info:
     | RATE_LIMITED | 429 |
     | INTERNAL_ERROR | 500 |
 
-    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.1`.
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.2`.
   license:
     name: Proprietary
 
@@ -78,7 +78,7 @@ paths:
                 $ref: "#/components/schemas/Health"
               example:
                 status: ok
-                version: "0.1.1"
+                version: "0.1.2"
 
   /me:
     get:
@@ -293,8 +293,12 @@ paths:
       operationId: startProcessing
       summary: Start processing
       description: |
-        Must be idempotent. Repeating the call on an already queued or
-        processing analysis MUST NOT start a second job.
+        The first valid call from ready_to_process creates one processing run
+        and returns queued. Repeating the call while the analysis is queued
+        returns the same 200 response and MUST NOT create a second run. Once a
+        processor has advanced the analysis to processing, or a later
+        processing/report state, the call returns 409
+        PROCESSING_ALREADY_STARTED and MUST NOT restart the run.
       responses:
         "200":
           description: Processing accepted.

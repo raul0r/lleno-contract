@@ -215,7 +215,12 @@ Upload completion accepts any non-empty subset of issued receipt IDs and is
 idempotent. `uploading → ready_to_process` requires at least one uploaded
 receipt and zero active pending slots.
 
-Processing may start only when the analysis is `ready_to_process` (or idempotently already `queued`/`processing`).
+Processing may start only when the analysis is `ready_to_process` (or idempotently already `queued`).
+The first valid request from `ready_to_process` creates one processing run and
+returns `200` with `queued`. A repeat while that run is `queued` returns the
+same `200` response and creates no second run. After a processor advances the
+analysis to `processing`, or after any later processing/report state, a new
+request returns `409 PROCESSING_ALREADY_STARTED` and does not restart it.
 
 Report is available only when `status` is `completed` (`REPORT_NOT_READY` otherwise).
 
