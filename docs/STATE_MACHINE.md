@@ -185,12 +185,27 @@ report
 
 1. Processor emits `review_issues` for ambiguous items only.
 2. Analysis enters `needs_review`.
-3. `GET /analyses/{analysis_id}/review` returns issues.
-4. Client `PATCH`es each issue with `accept`, `edit`, `remove`, or `unrecognized`.
-5. `POST /analyses/{analysis_id}/review/confirm` continues generation.
+3. `GET /analyses/{analysis_id}/review` returns every ambiguous issue while
+   review is open, including already-resolved issues. Each issue exposes
+   `resolution` (`null` while unresolved). Refresh/reopen restore successful
+   prior actions from this resource.
+4. Client `PATCH`es each issue with `accept`, `edit`, `remove`, or
+   `unrecognized`. `accept` / `remove` / `unrecognized` send only `action`.
+   `edit` sends at least one correction among `product_name`, `quantity`,
+   `line_total`, and the `size_value`+`size_unit` pair. PATCH is a resource
+   update: repeating the same valid request does not duplicate side effects;
+   the latest valid persisted resolution is authoritative. The user may
+   change an issue until confirmation.
+5. `POST /analyses/{analysis_id}/review/confirm` is permitted only when every
+   issue has a persisted resolution. Otherwise the API returns
+   `409 REVIEW_INCOMPLETE` with `unresolved_count` and `unresolved_issue_ids`.
+   On success the backend resumes the canonical lifecycle and returns the
+   updated Analysis. Clients recover unknown outcomes with GET Analysis, not
+   blind mutation retries. Further review mutations after leaving
+   `needs_review` are invalid.
 6. Analysis enters `generating_report`.
 
-The frontend should normally show only ambiguous items, with a count of total vs. needing help.
+The frontend should normally show only ambiguous items, with a count of total vs. needing help (unresolved issues). Unsaved form drafts are not canonical persistence.
 
 ## Entitlement and capacity
 

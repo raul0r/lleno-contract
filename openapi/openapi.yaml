@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lleno API
-  version: 0.1.2
+  version: 0.1.3
   summary: Product API for Despensa Wrapped (Lleno MVP)
   description: |
     Canonical HTTP contract for `api.lleno.io`.
@@ -36,12 +36,13 @@ info:
     | RECEIPT_LIMIT_REACHED | 409 |
     | PROCESSING_ALREADY_STARTED | 409 |
     | REVIEW_REQUIRED | 409 |
+    | REVIEW_INCOMPLETE | 409 |
     | REPORT_NOT_READY | 409 |
     | PROCESSING_FAILED | 409 |
     | RATE_LIMITED | 429 |
     | INTERNAL_ERROR | 500 |
 
-    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.2`.
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.3`.
   license:
     name: Proprietary
 
@@ -328,27 +329,71 @@ paths:
       operationId: getReview
       summary: Get review issues
       description: |
-        Lightweight review of ambiguous items only. Frontend copy example:
-        "Encontramos 63 productos. 3 necesitan tu ayuda."
+        Lightweight review of ambiguous items only. Valid while analysis
+        `status` is `needs_review`.
+
+        Returns every ambiguous issue while review is open, including issues
+        that already have a persisted `resolution`. Unresolved issues have
+        `resolution: null`. Refresh and reopen restore successful prior
+        actions from this resource. Unsaved form drafts are not part of this
+        resource.
+
+        Frontend copy example: "Encontramos 63 productos. 3 necesitan tu ayuda."
+        Count unresolved issues (`resolution` is null) as needing help; do not
+        treat `issues.length` as the unresolved count.
       responses:
         "200":
-          description: Review issues.
+          description: Review issues, including already-resolved ones.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Review"
-              example:
-                analysis_id: ana_xxx
-                total_items: 63
-                issues:
-                  - id: review_xxx
-                    receipt_id: rec_xxx
-                    item_id: item_xxx
-                    raw_label: CC PET 2.5
-                    suggested_name: Coca-Cola Original 2.5 L
-                    quantity: 1
-                    line_total: 44.0
-                    confidence: 0.67
+              examples:
+                unresolved:
+                  summary: Open review with an unresolved issue
+                  value:
+                    analysis_id: ana_xxx
+                    total_items: 63
+                    issues:
+                      - id: review_xxx
+                        receipt_id: rec_xxx
+                        item_id: item_xxx
+                        raw_label: CC PET 2.5
+                        suggested_name: Coca-Cola Original 2.5 L
+                        quantity: 1
+                        line_total: 44.0
+                        confidence: 0.67
+                        resolution: null
+                mixed:
+                  summary: Open review with one persisted action and one unresolved issue
+                  value:
+                    analysis_id: ana_xxx
+                    total_items: 63
+                    issues:
+                      - id: review_xxx
+                        receipt_id: rec_xxx
+                        item_id: item_xxx
+                        raw_label: CC PET 2.5
+                        suggested_name: Coca-Cola Original 2.5 L
+                        quantity: 1
+                        line_total: 44.0
+                        confidence: 0.67
+                        resolution:
+                          action: edit
+                          product_name: Coca-Cola Original
+                          quantity: 1
+                          size_value: 2.5
+                          size_unit: L
+                          line_total: 44.0
+                      - id: review_yyy
+                        receipt_id: rec_xxx
+                        item_id: item_yyy
+                        raw_label: LCH DESL 1L
+                        suggested_name: Leche descremada 1 L
+                        quantity: 2
+                        line_total: 36.0
+                        confidence: 0.54
+                        resolution: null
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -368,6 +413,19 @@ paths:
       tags: [Review]
       operationId: updateReviewIssue
       summary: Update a review item
+      description: |
+        Persists the issue resolution and returns the full updated canonical
+        issue. Valid while analysis `status` is `needs_review`.
+
+        Resource-update semantics: repeating the same valid PATCH MUST NOT
+        duplicate side effects. The latest valid persisted resolution is
+        authoritative. Until review confirmation, the user MAY change the
+        action or correction with another valid PATCH.
+
+        `accept`, `remove`, and `unrecognized` require only `action`.
+        `edit` may contain only `product_name`, `quantity`, `size_value`,
+        `size_unit`, and `line_total`, and MUST include at least one actual
+        correction. `size_value` and `size_unit` are valid only as a pair.
       requestBody:
         required: true
         content:
@@ -394,11 +452,65 @@ paths:
                   action: unrecognized
       responses:
         "200":
-          description: Issue updated.
+          description: Full updated canonical issue, including persisted resolution.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewIssue"
+              examples:
+                accept:
+                  value:
+                    id: review_xxx
+                    receipt_id: rec_xxx
+                    item_id: item_xxx
+                    raw_label: CC PET 2.5
+                    suggested_name: Coca-Cola Original 2.5 L
+                    quantity: 1
+                    line_total: 44.0
+                    confidence: 0.67
+                    resolution:
+                      action: accept
+                edit:
+                  value:
+                    id: review_xxx
+                    receipt_id: rec_xxx
+                    item_id: item_xxx
+                    raw_label: CC PET 2.5
+                    suggested_name: Coca-Cola Original 2.5 L
+                    quantity: 1
+                    line_total: 44.0
+                    confidence: 0.67
+                    resolution:
+                      action: edit
+                      product_name: Coca-Cola Original
+                      quantity: 1
+                      size_value: 2.5
+                      size_unit: L
+                      line_total: 44.0
+                remove:
+                  value:
+                    id: review_xxx
+                    receipt_id: rec_xxx
+                    item_id: item_xxx
+                    raw_label: CC PET 2.5
+                    suggested_name: Coca-Cola Original 2.5 L
+                    quantity: 1
+                    line_total: 44.0
+                    confidence: 0.67
+                    resolution:
+                      action: remove
+                unrecognized:
+                  value:
+                    id: review_xxx
+                    receipt_id: rec_xxx
+                    item_id: item_xxx
+                    raw_label: CC PET 2.5
+                    suggested_name: Coca-Cola Original 2.5 L
+                    quantity: 1
+                    line_total: 44.0
+                    confidence: 0.67
+                    resolution:
+                      action: unrecognized
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -419,13 +531,37 @@ paths:
       tags: [Review]
       operationId: confirmReview
       summary: Confirm review and continue generation
+      description: |
+        Permitted only while analysis `status` is `needs_review` and every
+        review issue has a persisted resolution.
+
+        If any issue is unresolved, return 409 `REVIEW_INCOMPLETE` with
+        `details.unresolved_count` and `details.unresolved_issue_ids`
+        (`review_…` IDs only; no OCR, filenames, or purchase payloads).
+
+        On success the backend resumes the canonical analysis lifecycle and
+        returns the updated Analysis. Typical next status is
+        `generating_report`. Clients MUST use that resource and MUST NOT
+        invent `generating_report` locally.
+
+        After the analysis leaves `needs_review`, further review PATCH or
+        confirm requests are invalid. Unknown confirmation outcomes MUST be
+        recovered by GET Analysis (and GET review only if status is still
+        `needs_review`), not by blindly retrying the mutation.
       responses:
         "200":
-          description: Analysis continued.
+          description: Canonical Analysis after review confirmation.
           content:
             application/json:
               schema:
                 $ref: "../schemas/analysis.schema.json"
+              example:
+                id: ana_xxx
+                mode: free
+                status: generating_report
+                max_receipts: 3
+                receipt_count: 3
+                created_at: "2026-09-07T14:12:44Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -433,7 +569,24 @@ paths:
         "404":
           $ref: "#/components/responses/AnalysisNotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: |
+            Incomplete review (`REVIEW_INCOMPLETE`) or the analysis is no
+            longer in `needs_review`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                incomplete:
+                  value:
+                    error:
+                      code: REVIEW_INCOMPLETE
+                      message: Aún faltan productos por revisar.
+                      details:
+                        unresolved_count: 2
+                        unresolved_issue_ids:
+                          - review_xxx
+                          - review_yyy
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -613,8 +766,8 @@ components:
     Conflict:
       description: |
         State conflict. Codes include RECEIPT_LIMIT_REACHED,
-        PROCESSING_ALREADY_STARTED, REVIEW_REQUIRED, REPORT_NOT_READY,
-        PROCESSING_FAILED.
+        PROCESSING_ALREADY_STARTED, REVIEW_REQUIRED, REVIEW_INCOMPLETE,
+        REPORT_NOT_READY, PROCESSING_FAILED.
       content:
         application/json:
           schema:
@@ -807,6 +960,7 @@ components:
         - quantity
         - line_total
         - confidence
+        - resolution
       properties:
         id:
           type: string
@@ -832,17 +986,36 @@ components:
           type: number
           minimum: 0
           maximum: 1
+        resolution:
+          description: |
+            Persisted user resolution. Null while unresolved. Refresh and
+            reopen restore this server value. Unsaved form drafts are not
+            part of this resource.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/UpdateReviewIssueRequest"
 
-    UpdateReviewIssueRequest:
+    ReviewIssueSimpleActionRequest:
       type: object
       additionalProperties: false
       required: [action]
       properties:
         action:
           type: string
-          enum: [accept, edit, remove, unrecognized]
+          enum: [accept, remove, unrecognized]
+          description: These actions MUST NOT include edit fields.
+
+    ReviewIssueEditRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          const: edit
         product_name:
           type: string
+          minLength: 1
         quantity:
           type: number
           exclusiveMinimum: 0
@@ -851,10 +1024,27 @@ components:
           exclusiveMinimum: 0
         size_unit:
           type: string
+          minLength: 1
           examples: [L, ml, kg, g, piece, pack]
         line_total:
           type: number
           description: MXN. JSON number with two decimal places.
+      dependentRequired:
+        size_value: [size_unit]
+        size_unit: [size_value]
+      anyOf:
+        - required: [product_name]
+        - required: [quantity]
+        - required: [line_total]
+        - required: [size_value, size_unit]
+      description: |
+        `edit` MUST contain at least one actual correction. `size_value` and
+        `size_unit` are valid only as a pair. No additional editable fields.
+
+    UpdateReviewIssueRequest:
+      oneOf:
+        - $ref: "#/components/schemas/ReviewIssueSimpleActionRequest"
+        - $ref: "#/components/schemas/ReviewIssueEditRequest"
 
     Checkout:
       type: object
@@ -916,6 +1106,7 @@ components:
                 - PROCESSING_ALREADY_STARTED
                 - PROCESSING_FAILED
                 - REVIEW_REQUIRED
+                - REVIEW_INCOMPLETE
                 - REPORT_NOT_READY
                 - PAYMENT_REQUIRED
                 - PAYMENT_FAILED

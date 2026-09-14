@@ -846,6 +846,7 @@ Each review issue may include:
 - price
 - suggested correction
 - confidence
+- persisted resolution (`null` while unresolved)
 
 User can:
 
@@ -854,7 +855,14 @@ User can:
 - mark unrecognized
 - remove line
 
-After confirmation, analysis continues.
+`GET /analyses/{analysis_id}/review` returns every ambiguous issue while
+review is open, including issues that already have a persisted resolution.
+Refresh and reopen restore successful prior actions from this resource.
+Unsaved form drafts are frontend-only and are not canonical persistence.
+
+Until review confirmation, the user may change an issue's action or
+correction. After confirmation, analysis continues on the canonical
+lifecycle; further review mutations are invalid.
 
 ---
 
@@ -1088,6 +1096,13 @@ Returns:
 GET /analyses/{analysis_id}/review
 ```
 
+Valid while analysis `status` is `needs_review`.
+
+Returns every ambiguous review issue for the open review, including issues
+that already have a persisted resolution. It does not filter to unresolved
+issues only. Each issue exposes `resolution`, which is `null` while
+unresolved and otherwise the latest valid persisted action.
+
 Response:
 
 ```json
@@ -1103,7 +1118,8 @@ Response:
       "suggested_name": "Coca-Cola Original 2.5 L",
       "quantity": 1,
       "line_total": 44.0,
-      "confidence": 0.67
+      "confidence": 0.67,
+      "resolution": null
     }
   ]
 }
@@ -1116,6 +1132,41 @@ Response:
 ```text
 PATCH /analyses/{analysis_id}/review/{issue_id}
 ```
+
+Valid while analysis `status` is `needs_review`. Updates that issue's
+persisted resolution and returns the full updated canonical issue.
+
+PATCH is a resource update: repeating the same valid request MUST NOT
+duplicate side effects. The latest valid persisted resolution is
+authoritative. Until review confirmation, the user MAY change an issue's
+action or correction with another valid PATCH.
+
+Valid actions:
+
+```text
+accept
+edit
+remove
+unrecognized
+```
+
+`accept`, `remove`, and `unrecognized` MUST contain only `action`.
+
+`edit` MAY contain only these editable fields and MUST contain at least one
+actual correction:
+
+```text
+product_name
+quantity
+size_value
+size_unit
+line_total
+```
+
+`quantity`, when present, MUST be greater than 0. `size_value` and
+`size_unit` are a pair: both MUST be present together, or both omitted.
+Do not invent additional editable fields. The API does not recalculate
+`line_total` from other submitted fields.
 
 Request example:
 
@@ -1130,14 +1181,7 @@ Request example:
 }
 ```
 
-Valid actions:
-
-```text
-accept
-edit
-remove
-unrecognized
-```
+After the analysis leaves `needs_review`, review mutations are invalid.
 
 ---
 
@@ -1147,7 +1191,24 @@ unrecognized
 POST /analyses/{analysis_id}/review/confirm
 ```
 
-Continues analysis generation.
+Valid while analysis `status` is `needs_review`.
+
+Permitted only when every review issue has a persisted resolution. If any
+issue is still unresolved, the API MUST return `409 REVIEW_INCOMPLETE`
+with machine-readable `details.unresolved_count` and
+`details.unresolved_issue_ids`. Those identifiers are review issue IDs
+(`review_…`); they MUST NOT include raw OCR, filenames, or purchase
+payloads.
+
+On success, the backend resumes the canonical analysis lifecycle and
+returns the updated Analysis. Typical next `status` is `generating_report`.
+Clients MUST use that authoritative resource and MUST NOT invent
+`generating_report` locally.
+
+After successful confirmation, further review PATCH or confirm requests
+are invalid. Unknown confirmation outcomes MUST be recovered by a fresh
+authoritative `GET /analyses/{analysis_id}` (and `GET …/review` only if
+status is still `needs_review`), not by blindly retrying the mutation.
 
 ---
 
@@ -1260,6 +1321,7 @@ UPLOAD_NOT_FOUND
 PROCESSING_ALREADY_STARTED
 PROCESSING_FAILED
 REVIEW_REQUIRED
+REVIEW_INCOMPLETE
 REPORT_NOT_READY
 PAYMENT_REQUIRED
 PAYMENT_FAILED
@@ -1448,7 +1510,7 @@ Both codebases pin a known contract version.
 
 Example:
 
-`LLENO_CONTRACT_VERSION=0.1.2`
+`LLENO_CONTRACT_VERSION=0.1.3`
 
 ---
 

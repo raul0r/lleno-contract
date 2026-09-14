@@ -269,6 +269,7 @@ Each review issue may include:
 - price
 - suggested correction
 - confidence
+- persisted resolution (`null` while unresolved)
 
 User can:
 
@@ -277,7 +278,14 @@ User can:
 - mark unrecognized
 - remove line
 
-After confirmation, analysis continues.
+`GET` review returns all ambiguous issues while review is open, including
+already-resolved ones. Successful prior actions restore from that resource.
+`PATCH` persists `accept`, `edit`, `remove`, or `unrecognized` on one issue
+and returns the full updated issue. `edit` requires at least one actual
+correction among `product_name`, `quantity`, `line_total`, and the
+`size_value`+`size_unit` pair. Confirmation is allowed only when every issue
+has a persisted resolution; otherwise `REVIEW_INCOMPLETE`. After confirmation,
+analysis continues on the canonical lifecycle.
 
 ## AI boundaries
 
