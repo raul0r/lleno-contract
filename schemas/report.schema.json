@@ -155,14 +155,16 @@
     "upgrade": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["available", "price_mxn", "max_receipts"],
+      "required": ["available", "price_mxn", "interval", "plan"],
       "properties": {
         "available": { "type": "boolean" },
         "price_mxn": {
           "$ref": "#/$defs/money",
-          "description": "Configured FULL_REPORT_PRICE_MXN. Not computed from FX."
+          "const": 49.00,
+          "description": "Monthly Lleno One subscription price in MXN."
         },
-        "max_receipts": { "type": "integer", "const": 15 }
+        "interval": { "type": "string", "const": "month" },
+        "plan": { "type": "string", "const": "one" }
       }
     },
     "fullReport": {

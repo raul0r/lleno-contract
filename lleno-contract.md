@@ -1,4 +1,4 @@
-# Lleno MVP — Product & API Contract v0.1
+# Lleno One — Product & API Contract v0.2.0
 
 Status: FROZEN FOR MVP IMPLEMENTATION  
 Market: Mexico  
@@ -49,7 +49,7 @@ Lleno:
 6. discovers patterns
 7. generates playful consumer-personality content
 8. produces a visual, interactive Wrapped
-9. optionally unlocks deeper analysis through a one-time payment
+9. offers account-level Lleno One subscription for ongoing personal history and reports
 
 Lleno is NOT an expense tracker.
 
@@ -70,7 +70,7 @@ anonymous session
     ↓
 create analysis
     ↓
-upload 1–3 receipts
+use five monthly Free receipts
     ↓
 process
     ↓
@@ -80,13 +80,9 @@ FREE WRAPPED
     ↓
 share
     ↓
-offer Complete Analysis
+upgrade to One at MXN $49/month
     ↓
-payment
-    ↓
-optionally add receipts up to 15
-    ↓
-FULL WRAPPED
+use 100 monthly receipts and owned purchase history
 ```
 
 Primary business metric:
@@ -159,9 +155,8 @@ Do NOT implement a lifetime "one free analysis per person" restriction in MVP.
 
 Reasonable abuse protection and rate limits are allowed.
 
-Each FREE analysis supports:
-
-`1–3 receipts`
+Each analysis/job accepts at most 15 receipt documents, subject to the owner's
+remaining monthly account allowance (5 on Free, 100 on One).
 
 Supported formats:
 
@@ -310,34 +305,34 @@ All evidence values must come from deterministic analytics.
 
 # 8. Complete Analysis
 
-The initial paid product is a ONE-TIME PURCHASE.
+Lleno One costs exactly MXN $49.00 per provider monthly billing cycle.
+The API chooses the One plan and price; the client cannot set either. A verified
+provider payment grants access only through its verified paid-through timestamp.
+Authorization, checkout redirects, and browser return parameters never grant
+access. Cancellation stops renewal and leaves access through the already paid
+period. Failed renewal grants no additional grace period. Account cancellation
+does not delete sanitized history or reports already earned.
 
-No subscription is part of MVP.
+Free users may process five successful unique receipt documents per owner-local
+calendar month. One users may process 100. A receipt document counts once when
+sanitized extraction is durably accepted, including when item review is needed.
+Retries of the same receipt record cannot consume capacity twice. A document
+rejected before accepted extraction or a terminal processing failure releases
+its reservation. Exact same-file uploads by the same owner in the same month are
+duplicates and do not consume another allowance slot. The allowance is atomic
+across concurrent analyses; usage reports used, reserved, remaining and reset
+time. The 100 limit is an initial beta ceiling and must not be advertised until
+measured cost acceptance.
 
-Price:
+An analysis accepts at most 15 receipt documents. This is an independent job
+bound; monthly allowance cannot be bypassed by creating more analyses. Each
+document represents one receipt. Multi-receipt documents must be split by the
+client; the API does not silently truncate or guess accounting units.
 
-Approximately USD $6, charged as a configurable fixed MXN amount.
-
-Configuration:
-
-`FULL_REPORT_PRICE_MXN`
-
-Do NOT calculate the product price dynamically from FX rates.
-
-The operator must be able to change the MXN price without redeploying application logic.
-
-Paid entitlement applies to one analysis.
-
-Maximum:
-
-`15 receipts per full analysis`
-
-A user who pays after analyzing 3 receipts may:
-
-- keep the existing 3
-- add up to 12 additional receipts
-- reprocess the same analysis
-- produce an improved Full Wrapped
+Supported JPEG, PNG and PDF files are at most 10 MiB. PDFs are limited to five
+pages; images are limited to 20 million decoded pixels per page and 12,000 pixels
+per side. Signed upload URLs expire after exactly 600 seconds. Oversized or
+out-of-bound documents are rejected before OCR.
 
 ---
 
@@ -420,7 +415,6 @@ AI may describe patterns, but numbers come from deterministic computation.
 
 Do NOT implement:
 
-- subscriptions
 - automatic recurring purchases
 - Amazon purchasing
 - Mercado Libre purchasing
@@ -523,12 +517,13 @@ Original receipt files MUST:
 - use unguessable object keys
 - be accessible only through short-lived signed access when required
 - be deleted as soon as successful processing makes them unnecessary
-- always have a hard expiry no later than 5 hours after successful upload confirmation
+- always have a hard expiry no later than 5 hours after R2 object creation
 
-The API records `delete_after` as `uploaded_at + 5 hours`. Production storage
-lifecycle rules and scheduled cleanup must provide enough operational margin to
-remove the object by that deadline. The receipt row remains after raw-object
-deletion.
+The API uses the R2 `object_created_at + 5 hours` deadline. Upload confirmation
+cannot extend it. Application cleanup must remove unconfirmed and orphaned
+objects with operational margin; asynchronous R2 lifecycle deletion is only a
+coarse backstop, not proof of a five-hour deadline. The receipt row remains
+after raw-object deletion.
 
 Target:
 
@@ -536,8 +531,8 @@ Target:
 successful receipt
 → delete original shortly after successful extraction
 
-failed/stalled receipt
-→ force delete at uploaded_at + 5h
+failed/stalled/unconfirmed receipt
+→ force delete at R2 object_created_at + 5h
 ```
 
 The five-hour limit is a maximum retention period, not the normal desired retention period.
@@ -926,9 +921,25 @@ Response includes:
   "profile_id": "...",
   "anonymous": true,
   "household_id": "...",
-  "entitlements": []
+  "verified": false,
+  "plan": "free",
+  "subscription": null,
+  "timezone": "America/Matamoros",
+  "usage": {
+    "month": "2026-10",
+    "allowance": 5,
+    "used": 0,
+    "reserved": 0,
+    "remaining": 5,
+    "resets_at": "2026-11-01T06:00:00Z",
+    "timezone": "America/Matamoros"
+  }
 }
 ```
+
+`verified` is derived from the validated Supabase identity and contains no
+email address. `usage` is atomically reserved across the account's concurrent
+analyses. See the OpenAPI `Me` schema for exact fields.
 
 ---
 
@@ -953,7 +964,7 @@ Response:
   "id": "ana_xxx",
   "mode": "free",
   "status": "created",
-  "max_receipts": 3,
+  "max_receipts": 15,
   "receipt_count": 0,
   "created_at": "..."
 }
@@ -984,7 +995,7 @@ Example:
   "id": "ana_xxx",
   "mode": "free",
   "status": "processing",
-  "max_receipts": 3,
+  "max_receipts": 15,
   "receipt_count": 2,
   "progress": {
     "stage": "normalizing_products",
@@ -1033,13 +1044,14 @@ Response:
 
 API validates:
 
-- entitlement
-- remaining receipt capacity
+- caller ownership, the 15-document analysis ceiling, and the account's atomic monthly usage
 - MIME type
 - allowed size: 10485760 bytes (10 MiB) per file
 
-Signed PUT URLs expire after 600 seconds. The browser uploads directly to
-private R2; the API never proxies receipt bytes.
+Signed PUT URLs expire after 600 seconds. PDFs are limited to five pages;
+decoded images are limited to 20 million pixels per page and 12,000 pixels per
+side. The browser uploads directly to private R2; the API never proxies receipt
+bytes.
 
 ---
 
@@ -1236,61 +1248,48 @@ Response shape:
   "full": null,
   "upgrade": {
     "available": true,
-    "price_mxn": 109,
-    "max_receipts": 15
+    "price_mxn": 49.00,
+    "interval": "month",
+    "plan": "one"
   }
 }
 ```
 
-For entitled analysis:
+For an owner with an active verified One period:
 
 ```text
 access = "full"
 full != null
 ```
 
----
+The account-level subscription routes are `POST /subscriptions/checkout`,
+`GET /subscriptions` and `POST /subscriptions/cancel`. Checkout requires a
+verified permanent account and an idempotency key. Price and plan are selected
+by the server. Only provider-verified payment grants access. Cancellation ends
+renewal while preserving already-paid access. The API never returns provider
+payment references or card data.
 
-## Create checkout
+`GET /history` provides bounded, cursor-paginated owned purchases.
+`PATCH /purchases/{item_id}` corrects a sanitized owned purchase and invalidates
+its month and following month's report. `GET /products/{product_id}/prices`
+returns only the caller's comparable historical receipt observations.
+`GET /reports/monthly?month=YYYY-MM` reports observed receipts in the owner
+timezone, exposes dated/undated and category coverage, includes an unclassified
+bucket, and compares only against the previous calendar month when coverage is
+sufficient. These operations and their exact response shapes are normative in
+OpenAPI.
 
-```text
-POST /analyses/{analysis_id}/checkout
-```
+Generating a new monthly report requires active One access. A monthly report
+already generated remains readable after cancellation; it is not recomputed
+without active access. A report earned through a verified paid period likewise
+remains readable after that period ends.
 
-Response:
-
-```json
-{
-  "checkout_id": "...",
-  "checkout_url": "...",
-  "amount_mxn": 109,
-  "currency": "MXN"
-}
-```
-
-Payment provider implementation belongs to API.
-
-Payment callbacks/webhooks MUST be verified server-side.
-
-Payment success creates entitlement.
-
----
-
-## Payment status
-
-```text
-GET /analyses/{analysis_id}/entitlement
-```
-
-Response:
-
-```json
-{
-  "access": "full",
-  "max_receipts": 15,
-  "payment_status": "paid"
-}
-```
+`POST /me/deletion` requires explicit `confirm: true` and creates an idempotent
+asynchronous deletion request; `GET /me/deletion` returns its owner-only status.
+It purges account product data, reports, aliases, caches and in-flight raw
+objects. Only minimum legally required financial/audit rows may remain, with
+identity removed and product access revoked. A request status is not evidence
+that storage deletion has completed.
 
 ---
 
@@ -1469,7 +1468,19 @@ full_report_viewed
 additional_receipts_uploaded
 account_conversion_started
 account_conversion_completed
+subscription_checkout_started
+subscription_started
+subscription_renewed
+subscription_payment_failed
+subscription_canceled
+receipt_quota_exhausted
+purchase_corrected
+monthly_report_viewed
 ```
+
+These events are server-observed. The contract does not define a public event
+ingest endpoint. Event payloads contain only approved aggregate identifiers and
+never receipt content or payment/provider references.
 
 ---
 
@@ -1503,14 +1514,18 @@ lleno-contract/
     ├── processing-analysis.json
     ├── needs-review.json
     ├── failed-analysis.json
-    └── paid-analysis-with-extra-capacity.json
+    ├── me-free.json
+    ├── subscription-active.json
+    ├── purchase-history.json
+    ├── monthly-report.json
+    └── personal-price-history.json
 ```
 
 Both codebases pin a known contract version.
 
 Example:
 
-`LLENO_CONTRACT_VERSION=0.1.3`
+`LLENO_CONTRACT_VERSION=0.2.0`
 
 ---
 
@@ -1547,11 +1562,13 @@ A brand-new mobile user must be able to:
 7. see a funny data-grounded personality
 8. export/share a safe social card
 9. see that deeper analysis exists
-10. pay once in MXN
-11. unlock Full Analysis
-12. optionally upload additional receipts up to 15
-13. receive an improved report
-14. return later and see simple analysis history
+10. convert to a verified recoverable account before checkout
+11. start Lleno One at MXN $49.00 per monthly provider billing cycle
+12. receive paid access only after a verified provider payment
+13. use the remaining 100-document monthly allowance across bounded analysis batches
+14. search owned purchases, view personal observed prices and read an on-demand monthly report
+15. cancel renewal while keeping access through the paid-through timestamp
+16. request account deletion and check its completion status
 
 Original receipt images must not survive beyond the configured five-hour maximum.
 

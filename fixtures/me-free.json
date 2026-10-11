@@ -1,0 +1,18 @@
+{
+  "profile_id": "prf_fixture_free",
+  "anonymous": true,
+  "verified": false,
+  "household_id": "hh_fixture_free",
+  "plan": "free",
+  "subscription": null,
+  "timezone": "America/Matamoros",
+  "usage": {
+    "month": "2026-10",
+    "allowance": 5,
+    "used": 2,
+    "reserved": 1,
+    "remaining": 2,
+    "resets_at": "2026-11-01T06:00:00Z",
+    "timezone": "America/Matamoros"
+  }
+}

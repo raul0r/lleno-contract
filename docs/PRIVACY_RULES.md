@@ -14,7 +14,7 @@ Original receipt files MUST:
 - use unguessable object keys
 - be accessible only through short-lived signed access when required
 - be deleted as soon as successful processing makes them unnecessary
-- always have a hard expiry no later than **5 hours** after successful upload confirmation
+- always have a hard expiry no later than **5 hours after R2 object creation**
 
 Target:
 
@@ -22,11 +22,11 @@ Target:
 successful receipt
 → delete original shortly after successful extraction
 
-failed/stalled receipt
-→ force delete at uploaded_at + 5h
+failed/stalled/unconfirmed receipt
+→ force delete at R2 object_created_at + 5h
 ```
 
-The five-hour limit is a **maximum** retention period, not the normal desired retention period. The API records `delete_after` at `uploaded_at + 5 hours`; production storage lifecycle rules and frequent scheduled cleanup must provide operational margin to remove raw objects by that deadline.
+The five-hour limit is a **maximum** retention period, not the normal desired retention period. Confirmation time cannot extend it. Application cleanup must delete by the R2 `object_created_at + 5 hours` deadline, including uploaded-but-unconfirmed objects and orphan signed PUTs. R2 lifecycle deletion is asynchronous and is only a coarse backstop; do not treat its policy as proof of a five-hour deadline. Cleanup runs with margin and alerts on failures or overdue objects.
 
 Browser uploads directly to R2 via signed URLs issued by the API. The API validates object existence on `POST /analyses/{analysis_id}/uploads/complete`.
 

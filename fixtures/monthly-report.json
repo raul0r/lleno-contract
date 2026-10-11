@@ -1,0 +1,15 @@
+{
+  "month": "2026-09",
+  "timezone": "America/Matamoros",
+  "receipt_count": 3,
+  "dated_receipt_count": 2,
+  "undated_receipt_count": 1,
+  "total_spent_mxn": "1280.40",
+  "category_coverage": 0.75,
+  "unclassified_spending_mxn": "320.00",
+  "reconciliation": "incomplete",
+  "categories": [],
+  "merchants": [],
+  "recurring_products": [],
+  "changes": { "available": false, "reason": "insufficient_prior_month_data" }
+}

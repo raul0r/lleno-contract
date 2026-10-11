@@ -1,6 +1,6 @@
 # Product rules
 
-Normative product behavior for Lleno MVP. User-facing language is Mexican Spanish. Currency is MXN.
+Normative product behavior for Lleno One MVP. User-facing language is Mexican Spanish. Currency is MXN.
 
 ## Free tier
 
@@ -10,7 +10,9 @@ Do **not** implement a lifetime "one free analysis per person" restriction in MV
 
 Reasonable abuse protection and rate limits are allowed.
 
-Each FREE analysis supports `1–3` receipts.
+Free permits five successful unique receipt documents per owner-local calendar month. One permits 100. The 100 receipt ceiling is an initial beta limit and must not be advertised until measured cost acceptance.
+
+Each analysis/job accepts at most 15 documents. This processing batch bound is separate from account monthly usage.
 
 Supported formats: JPG, JPEG, PNG, PDF.
 
@@ -20,8 +22,19 @@ short-lived and expire after 600 seconds.
 Receipts may come from any consumer purchase. Do not restrict the parser to known retailers.
 
 Free receipt capacity counts successfully uploaded receipts plus active pending
-upload slots. Expired or failed pending slots do not consume the three-receipt
-capacity and may be replaced.
+upload slots. Expired or failed pending slots do not consume capacity and may be
+replaced. Monthly usage reserves capacity atomically across concurrent
+analyses. Retries for one receipt record consume only once. A slot is consumed
+when sanitized extraction is durably accepted, including when review is
+required; terminal failure or rejection before accepted extraction releases
+the reservation. An exact same-file reupload by the same owner in the same
+calendar month is a duplicate and consumes no additional slot. The response
+exposes allowance, used, reserved, remaining, reset timestamp and timezone.
+
+The initial reporting and usage timezone is `America/Matamoros`, stored per
+owner. Calendar months use this timezone; timestamps remain UTC. Provider
+billing periods determine subscription access and do not change calendar-month
+usage boundaries.
 
 ## Free report
 
@@ -123,34 +136,34 @@ All evidence values must come from deterministic analytics.
 
 Shape: see [`schemas/personality.schema.json`](../schemas/personality.schema.json) and [`schemas/share-payload.schema.json`](../schemas/share-payload.schema.json).
 
-## Complete analysis (paid)
+## Lleno One subscription
 
-The initial paid product is a **one-time purchase**. No subscription is part of MVP.
+Lleno One is a recurring subscription for exactly MXN $49.00 per provider
+monthly billing cycle. The server selects the plan and amount. Money uses exact
+decimal/cents semantics. No FX conversion is used.
 
-Price: approximately USD $6, charged as a configurable fixed MXN amount.
+Anonymous users receive the Free allowance. Subscription checkout requires a
+verified account. Supabase identity linking/recovery occurs through Supabase
+Auth; the API derives identity from the bearer JWT. The API reports whether the
+identity is anonymous/verified without returning email or other account PII.
 
-Configuration: `FULL_REPORT_PRICE_MXN`
+Only provider-verified paid periods grant One access. Checkout creation,
+authorization, redirects and client claims never grant access. Cancellation
+stops future renewal and retains access until the already verified paid-through
+time. No extra grace period is granted after a failed renewal. Cancellation
+does not erase sanitized history or reports already earned. New premium
+computations stop when paid access ends; historical reads remain available with
+the Free projection.
 
-Do **not** calculate the product price dynamically from FX rates.
-
-The operator must be able to change the MXN price without redeploying application logic.
-
-Paid entitlement applies to **one analysis**.
-
-Maximum: `15 receipts per full analysis`.
-
-A user who pays after analyzing 3 receipts may:
-
-- keep the existing 3
-- add up to 12 additional receipts
-- reprocess the same analysis
-- produce an improved Full Wrapped
+Provider subscription references, payment details and webhook bodies are never
+returned to the client. Webhook handling is internal and verified; the public
+API remains provider-independent.
 
 Payment provider implementation belongs to the API.
 
 Payment callbacks/webhooks MUST be verified server-side.
 
-Payment success creates entitlement.
+Verified payment creates account-level One access through the paid-through time.
 
 ## Full report
 
@@ -353,13 +366,20 @@ JSON responses may serialize money as decimal numbers with two fractional digits
 | `full` | `null` | object |
 | `upgrade.available` | `true` | `false` |
 
-Entitlement response after payment:
+Account status after verified payment:
 
 ```json
 {
-  "access": "full",
-  "max_receipts": 15,
-  "payment_status": "paid"
+  "plan": "one",
+  "subscription": {
+    "status": "active",
+    "price_mxn": "49.00",
+    "interval": "month",
+    "current_period_end": "2026-11-01T05:00:00Z",
+    "paid_through": "2026-11-01T05:00:00Z",
+    "cancel_at_period_end": false,
+    "access": "one"
+  }
 }
 ```
 

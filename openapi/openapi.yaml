@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Lleno API
-  version: 0.1.3
-  summary: Product API for Despensa Wrapped (Lleno MVP)
+  version: 0.2.0
+  summary: Product API for Lleno One
   description: |
     Canonical HTTP contract for `api.lleno.io`.
 
@@ -39,17 +39,24 @@ info:
     | REVIEW_INCOMPLETE | 409 |
     | REPORT_NOT_READY | 409 |
     | PROCESSING_FAILED | 409 |
+    | USAGE_LIMIT_REACHED | 409 |
+    | ACCOUNT_VERIFICATION_REQUIRED | 403 |
+    | SUBSCRIPTION_CONFLICT | 409 |
+    | SUBSCRIPTION_NOT_FOUND | 404 |
+    | PURCHASE_NOT_FOUND | 404 |
+    | PURCHASE_CONFLICT | 409 |
+    | PRODUCT_NOT_FOUND | 404 |
+    | DELETION_PENDING | 409 |
+    | DELETION_NOT_FOUND | 404 |
     | RATE_LIMITED | 429 |
     | INTERNAL_ERROR | 500 |
 
-    Contract version: pin `LLENO_CONTRACT_VERSION=0.1.3`.
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.2.0`.
   license:
     name: Proprietary
-
 servers:
   - url: https://api.lleno.io/v1
     description: Production
-
 tags:
   - name: Health
   - name: Me
@@ -59,14 +66,17 @@ tags:
   - name: Review
   - name: Reports
   - name: Payments
-
+  - name: Subscriptions
+  - name: History
+  - name: Monthly reports
+  - name: Preferences
 security:
   - bearerAuth: []
-
 paths:
   /health:
     get:
-      tags: [Health]
+      tags:
+        - Health
       operationId: getHealth
       summary: Liveness
       security: []
@@ -79,16 +89,16 @@ paths:
                 $ref: "#/components/schemas/Health"
               example:
                 status: ok
-                version: "0.1.2"
-
+                version: 0.2.0
   /me:
     get:
-      tags: [Me]
+      tags:
+        - Me
       operationId: getMe
       summary: Current user
-      description: |
-        Profile, household, and entitlements for the caller derived from
-        the bearer token. The first session is anonymous.
+      description: Identity, One eligibility and atomic monthly receipt usage for the
+        caller derived from the bearer JWT. Anonymous identities receive Free
+        access. Verified status contains no email or other account PII.
       responses:
         "200":
           description: Current user.
@@ -96,22 +106,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Me"
-              example:
-                profile_id: prf_xxx
-                anonymous: true
-                household_id: hh_xxx
-                entitlements: []
+              examples:
+                me-free:
+                  $ref: "#/components/examples/me-free"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses:
     get:
-      tags: [Analyses]
+      tags:
+        - Analyses
       operationId: listAnalyses
       summary: List analysis history
-      description: Caller's analyses, newest first. No pagination in MVP.
+      description: Caller-owned analyses, newest first. No pagination in MVP. Monthly
+        receipt usage is returned by GET /me.
       responses:
         "200":
           description: Analyses newest first.
@@ -120,13 +129,14 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "../schemas/analysis.schema.json"
+                  $ref: ../schemas/analysis.schema.json
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
     post:
-      tags: [Analyses]
+      tags:
+        - Analyses
       operationId: createAnalysis
       summary: Create a free analysis
       requestBody:
@@ -143,26 +153,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "../schemas/analysis.schema.json"
+                $ref: ../schemas/analysis.schema.json
               example:
                 id: ana_xxx
                 mode: free
                 status: created
-                max_receipts: 3
+                max_receipts: 15
                 receipt_count: 0
-                created_at: "2026-09-07T15:41:08Z"
+                created_at: 2026-09-07T15:41:08Z
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     get:
-      tags: [Analyses]
+      tags:
+        - Analyses
       operationId: getAnalysis
       summary: Get analysis
       responses:
@@ -171,7 +181,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "../schemas/analysis.schema.json"
+                $ref: ../schemas/analysis.schema.json
               examples:
                 processing:
                   $ref: "#/components/examples/ProcessingAnalysis"
@@ -187,31 +197,19 @@ paths:
           $ref: "#/components/responses/AnalysisNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/uploads:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     post:
-      tags: [Uploads]
+      tags:
+        - Uploads
       operationId: createUploads
       summary: Request signed upload slots
-      description: |
-        Issues short-lived signed URLs. The browser uploads directly to
-        private object storage.
-
-        API validates entitlement, remaining receipt capacity, MIME type,
-        and allowed size.
-
-        Allowed content types: `image/jpeg`, `image/png`, `application/pdf`.
-        Allowed filename extensions: JPG, JPEG, PNG, PDF.
-
-        Remaining capacity is `max_receipts - receipt_count` (3 free, 15 full).
-        A pending upload slot consumes capacity only while its upload URL is
-        active. Pending slots expire after 600 seconds. Expired or failed
-        pending slots do not consume capacity and may be replaced.
-
-        The declared file size must be between 1 and 10485760 bytes (10 MiB).
-        Signed PUT URLs expire after 600 seconds.
+      description: Requests signed upload slots. Maximum 15 receipt documents per
+        analysis; atomic monthly allowance is separate. Each document contains
+        one receipt. JPEG, PNG and PDF files are at most 10 MiB; PDF is at most
+        five pages and images are at most 20 million decoded pixels per page and
+        12,000 pixels per side. Upload URLs expire after exactly 600 seconds.
       requestBody:
         required: true
         content:
@@ -239,15 +237,24 @@ paths:
         "404":
           $ref: "#/components/responses/AnalysisNotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: Límite mensual alcanzado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: USAGE_LIMIT_REACHED
+                  message: Límite mensual alcanzado.
+                  details: {}
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/uploads/complete:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     post:
-      tags: [Uploads]
+      tags:
+        - Uploads
       operationId: completeUploads
       summary: Confirm uploads
       description: |
@@ -263,14 +270,15 @@ paths:
             schema:
               $ref: "#/components/schemas/CompleteUploadsRequest"
             example:
-              receipt_ids: [rec_xxx]
+              receipt_ids:
+                - rec_xxx
       responses:
         "200":
           description: Uploads confirmed.
           content:
             application/json:
               schema:
-                $ref: "../schemas/analysis.schema.json"
+                $ref: ../schemas/analysis.schema.json
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -285,12 +293,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/process:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     post:
-      tags: [Processing]
+      tags:
+        - Processing
       operationId: startProcessing
       summary: Start processing
       description: |
@@ -320,12 +328,12 @@ paths:
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/review:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     get:
-      tags: [Review]
+      tags:
+        - Review
       operationId: getReview
       summary: Get review issues
       description: |
@@ -361,7 +369,7 @@ paths:
                         raw_label: CC PET 2.5
                         suggested_name: Coca-Cola Original 2.5 L
                         quantity: 1
-                        line_total: 44.0
+                        line_total: 44
                         confidence: 0.67
                         resolution: null
                 mixed:
@@ -376,7 +384,7 @@ paths:
                         raw_label: CC PET 2.5
                         suggested_name: Coca-Cola Original 2.5 L
                         quantity: 1
-                        line_total: 44.0
+                        line_total: 44
                         confidence: 0.67
                         resolution:
                           action: edit
@@ -384,14 +392,14 @@ paths:
                           quantity: 1
                           size_value: 2.5
                           size_unit: L
-                          line_total: 44.0
+                          line_total: 44
                       - id: review_yyy
                         receipt_id: rec_xxx
                         item_id: item_yyy
                         raw_label: LCH DESL 1L
                         suggested_name: Leche descremada 1 L
                         quantity: 2
-                        line_total: 36.0
+                        line_total: 36
                         confidence: 0.54
                         resolution: null
         "401":
@@ -404,13 +412,13 @@ paths:
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/review/{issue_id}:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
       - $ref: "#/components/parameters/IssueId"
     patch:
-      tags: [Review]
+      tags:
+        - Review
       operationId: updateReviewIssue
       summary: Update a review item
       description: |
@@ -443,7 +451,7 @@ paths:
                   quantity: 1
                   size_value: 2.5
                   size_unit: L
-                  line_total: 44.0
+                  line_total: 44
               remove:
                 value:
                   action: remove
@@ -466,7 +474,7 @@ paths:
                     raw_label: CC PET 2.5
                     suggested_name: Coca-Cola Original 2.5 L
                     quantity: 1
-                    line_total: 44.0
+                    line_total: 44
                     confidence: 0.67
                     resolution:
                       action: accept
@@ -478,7 +486,7 @@ paths:
                     raw_label: CC PET 2.5
                     suggested_name: Coca-Cola Original 2.5 L
                     quantity: 1
-                    line_total: 44.0
+                    line_total: 44
                     confidence: 0.67
                     resolution:
                       action: edit
@@ -486,7 +494,7 @@ paths:
                       quantity: 1
                       size_value: 2.5
                       size_unit: L
-                      line_total: 44.0
+                      line_total: 44
                 remove:
                   value:
                     id: review_xxx
@@ -495,7 +503,7 @@ paths:
                     raw_label: CC PET 2.5
                     suggested_name: Coca-Cola Original 2.5 L
                     quantity: 1
-                    line_total: 44.0
+                    line_total: 44
                     confidence: 0.67
                     resolution:
                       action: remove
@@ -507,7 +515,7 @@ paths:
                     raw_label: CC PET 2.5
                     suggested_name: Coca-Cola Original 2.5 L
                     quantity: 1
-                    line_total: 44.0
+                    line_total: 44
                     confidence: 0.67
                     resolution:
                       action: unrecognized
@@ -523,12 +531,12 @@ paths:
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/review/confirm:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     post:
-      tags: [Review]
+      tags:
+        - Review
       operationId: confirmReview
       summary: Confirm review and continue generation
       description: |
@@ -554,14 +562,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "../schemas/analysis.schema.json"
+                $ref: ../schemas/analysis.schema.json
               example:
                 id: ana_xxx
                 mode: free
                 status: generating_report
-                max_receipts: 3
-                receipt_count: 3
-                created_at: "2026-09-07T14:12:44Z"
+                max_receipts: 15
+                receipt_count: 15
+                created_at: 2026-09-07T14:12:44Z
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -589,12 +597,12 @@ paths:
                           - review_yyy
         "429":
           $ref: "#/components/responses/RateLimited"
-
   /analyses/{analysis_id}/report:
     parameters:
       - $ref: "#/components/parameters/AnalysisId"
     get:
-      tags: [Reports]
+      tags:
+        - Reports
       operationId: getReport
       summary: Get Wrapped report
       description: |
@@ -611,7 +619,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "../schemas/report.schema.json"
+                $ref: ../schemas/report.schema.json
               examples:
                 free:
                   $ref: "#/components/examples/FreeReport"
@@ -627,86 +635,487 @@ paths:
           $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/RateLimited"
-
-  /analyses/{analysis_id}/checkout:
-    parameters:
-      - $ref: "#/components/parameters/AnalysisId"
-    post:
-      tags: [Payments]
-      operationId: createCheckout
-      summary: Create one-time checkout
-      description: |
-        One-time MXN purchase for this analysis. Amount is
-        `FULL_REPORT_PRICE_MXN`, a configured constant, not FX-derived.
-
-        Payment provider implementation belongs to the API.
-        Payment callbacks/webhooks MUST be verified server-side.
-        Payment success creates entitlement for this analysis.
-      responses:
-        "200":
-          description: Checkout session.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Checkout"
-              example:
-                checkout_id: chk_xxx
-                checkout_url: https://pay.example/checkout/chk_xxx
-                amount_mxn: 109
-                currency: MXN
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/AnalysisNotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-
-  /analyses/{analysis_id}/entitlement:
-    parameters:
-      - $ref: "#/components/parameters/AnalysisId"
+  /subscriptions:
     get:
-      tags: [Payments]
-      operationId: getEntitlement
-      summary: Payment / entitlement status
+      tags:
+        - Subscriptions
+      operationId: getSubscription
+      summary: Current One subscription
+      description: Returns current provider-independent access state. Paid access
+        requires verified provider evidence; a checkout redirect never grants
+        access.
       responses:
         "200":
-          description: Entitlement for this analysis.
+          description: Current account plan and subscription.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Entitlement"
+                $ref: "#/components/schemas/SubscriptionStatus"
               examples:
-                unpaid:
-                  value:
-                    access: free
-                    max_receipts: 3
-                    payment_status: unpaid
-                paid:
-                  value:
-                    access: full
-                    max_receipts: 15
-                    payment_status: paid
+                subscription-active:
+                  $ref: "#/components/examples/subscription-active"
+        "401": &a1
+          $ref: "#/components/responses/Unauthorized"
+        "429": &a2
+          $ref: "#/components/responses/RateLimited"
+  /subscriptions/checkout:
+    post:
+      tags:
+        - Subscriptions
+      operationId: createSubscriptionCheckout
+      summary: Start One subscription checkout
+      description: Requires a verified permanent account. Server selects One at
+        exactly MXN 49.00 per provider monthly cycle. Idempotency-Key is
+        required. Checkout creation and authorization do not grant access; only
+        verified payment does. No payment card or provider identifiers are
+        accepted from or returned to the client.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 128
+      responses:
+        "200":
+          description: Hosted checkout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionCheckout"
+              example:
+                checkout_url: https://pay.example/checkout/session
+                price_mxn: "49.00"
+                currency: MXN
+                interval: month
+        "401": *a1
+        "403":
+          description: Account is not verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: ACCOUNT_VERIFICATION_REQUIRED
+                  message: Verifica tu cuenta para continuar.
+                  details: {}
+        "409":
+          description: Ya existe una suscripción vigente o pendiente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: SUBSCRIPTION_CONFLICT
+                  message: Ya existe una suscripción vigente o pendiente.
+                  details: {}
+        "429": *a2
+  /subscriptions/cancel:
+    post:
+      tags:
+        - Subscriptions
+      operationId: cancelSubscription
+      summary: Cancel One renewal
+      description: Idempotently requests cancellation at the end of the already
+        verified paid period. It does not erase data or shorten that paid
+        period. Provider failure is reported and is not represented as a
+        completed cancellation.
+      responses:
+        "200":
+          description: Cancellation state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+              example:
+                plan: one
+                subscription:
+                  status: active
+                  price_mxn: "49.00"
+                  interval: month
+                  current_period_end: 2026-11-01T05:00:00Z
+                  paid_through: 2026-11-01T05:00:00Z
+                  cancel_at_period_end: true
+                  access: one
+        "401": *a1
+        "404":
+          description: No se encontró una suscripción vigente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: SUBSCRIPTION_NOT_FOUND
+                  message: No se encontró una suscripción vigente.
+                  details: {}
+        "409":
+          description: No se pudo actualizar la suscripción.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: SUBSCRIPTION_CONFLICT
+                  message: No se pudo actualizar la suscripción.
+                  details: {}
+        "429": *a2
+  /history:
+    get:
+      tags:
+        - History
+      operationId: searchPurchases
+      summary: Search owned purchases
+      description: Returns only the caller household’s sanitized, accepted purchases.
+        Stable owner-bound opaque cursor pagination, bounded page size,
+        inclusive owner-local purchase-date filters, and case/accent-insensitive
+        matching. Unknown dates are excluded from date filters and month
+        buckets. No cross-account or externally sourced prices.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: store_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: product_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: category_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Page of caller-owned purchases.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasePage"
+              examples:
+                purchase-history:
+                  $ref: "#/components/examples/purchase-history"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401": *a1
+        "429": *a2
+  /reports/monthly:
+    get:
+      tags:
+        - Monthly reports
+      operationId: getMonthlyReport
+      summary: Get personal monthly report
+      description: month is YYYY-MM in the owner timezone. New One monthly reports are
+        generated only with active paid access; previously generated reports
+        remain readable after cancellation and are not recomputed without
+        access. Reports describe only observed receipts and expose dated/undated
+        count, category coverage and receipt-total reconciliation. Unknown dates
+        never become a fabricated date. Comparisons use the preceding calendar
+        month and comparable product/variant units only. Cached results are
+        invalidated by corrections, late purchases or deletion.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: ^\d{4}-(0[1-9]|1[0-2])$
+      responses:
+        "200":
+          description: Observed monthly report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyReport"
+              examples:
+                monthly-report:
+                  $ref: "#/components/examples/monthly-report"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401": *a1
+        "403": &a3
+          $ref: "#/components/responses/Forbidden"
+        "429": *a2
+  /products/{product_id}/prices:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    get:
+      tags:
+        - History
+      operationId: getPersonalProductPrices
+      summary: Get personal observed prices
+      description: Returns only observations from the caller’s accepted receipts,
+        ordered by purchase date. Price series group by confirmed variant and
+        comparable normalized unit. Prices are historical receipt evidence, not
+        live offers. Ambiguous variants stay separate; insufficient observations
+        do not produce savings claims.
+      responses:
+        "200":
+          description: Personal price observations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPriceHistory"
+              examples:
+                personal-price-history:
+                  $ref: "#/components/examples/personal-price-history"
+        "401": *a1
+        "404":
+          description: No se encontró el producto.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: PRODUCT_NOT_FOUND
+                  message: No se encontró el producto.
+                  details: {}
+        "429": *a2
+  /purchases/{item_id}:
+    parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    patch:
+      tags:
+        - History
+      operationId: correctPurchase
+      summary: Correct an accepted purchase
+      description: Corrects only a caller-owned sanitized accepted item. Exact decimal
+        money and quantity strings are used for the ledger. A correction updates
+        source-backed history and invalidates the purchase month and following
+        month report. It never changes another owner’s catalog aliases. If
+        corrected into a duplicate, the client must confirm the merge through
+        the documented duplicate action before one allowance slot is released.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseCorrection"
+      responses:
+        "200":
+          description: Updated purchase.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+              example:
+                id: item_xxx
+                receipt_id: rec_xxx
+                purchase_date: 2026-09-04
+                merchant: Tienda
+                product: Leche
+                quantity: "2"
+                line_total_mxn: "64.00"
+                category_id: lacteos
+                variant_id: null
+                normalized_unit: null
+                updated_at: 2026-10-11T00:00:00Z
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401": *a1
+        "403": *a3
+        "404":
+          description: No se encontró la compra.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: PURCHASE_NOT_FOUND
+                  message: No se encontró la compra.
+                  details: {}
+        "409":
+          description: La compra cambió; vuelve a cargar el historial.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: PURCHASE_CONFLICT
+                  message: La compra cambió; vuelve a cargar el historial.
+                  details: {}
+        "429": *a2
+  /me/preferences:
+    patch:
+      tags:
+        - Preferences
+      operationId: updatePreferences
+      summary: Update report timezone
+      description: Stores the caller’s IANA timezone for calendar-month reporting and
+        usage. UTC remains the storage format for timestamps. Existing
+        subscription billing periods are not changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - timezone
+              properties:
+                timezone:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  description: Valid IANA timezone.
+      responses:
+        "200":
+          description: Updated caller summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+              example:
+                profile_id: prf_xxx
+                anonymous: false
+                verified: true
+                household_id: hh_xxx
+                plan: free
+                subscription: null
+                timezone: America/Matamoros
+                usage:
+                  month: 2026-10
+                  allowance: 5
+                  used: 2
+                  reserved: 0
+                  remaining: 3
+                  resets_at: 2026-11-01T06:00:00Z
+                  timezone: America/Matamoros
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401": *a1
+        "429": *a2
+  /me/deletion:
+    post:
+      tags:
+        - Me
+      operationId: requestAccountDeletion
+      summary: Request account deletion
+      description: Idempotently requests deletion of the authenticated owner’s account
+        and owned purchase history. The response is an asynchronous request
+        status, not proof that physical data is already deleted. In-flight raw
+        objects are deleted under the raw-file deadline. Only minimum legally
+        required payment/audit records may remain, pseudonymized and
+        inaccessible to product features.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - confirm
+              properties:
+                confirm:
+                  type: boolean
+                  const: true
+      responses:
+        "202":
+          description: Deletion request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletionStatus"
+              example:
+                status: requested
+                requested_at: 2026-10-11T12:00:00Z
+                completed_at: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/AnalysisNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
-
+    get:
+      tags:
+        - Me
+      operationId: getAccountDeletion
+      summary: Get account deletion status
+      description: Returns only the authenticated owner’s asynchronous deletion
+        status. A completed response means owned product data was purged; it
+        does not claim deletion of minimum legally retained, pseudonymized
+        financial records.
+      responses:
+        "200":
+          description: Deletion request status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletionStatus"
+              example:
+                status: requested
+                requested_at: 2026-10-11T12:00:00Z
+                completed_at: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Supabase JWT. Anonymous auth is required for MVP.
-
+      description: Verified Supabase JWT, anonymous or permanent. Subscription
+        checkout requires verified permanent identity.
   parameters:
     AnalysisId:
       name: analysis_id
@@ -714,15 +1123,14 @@ components:
       required: true
       schema:
         type: string
-        pattern: "^ana_"
+        pattern: ^ana_
     IssueId:
       name: issue_id
       in: path
       required: true
       schema:
         type: string
-        pattern: "^review_"
-
+        pattern: ^review_
   responses:
     Unauthorized:
       description: Missing or invalid bearer token.
@@ -788,7 +1196,17 @@ components:
               code: RATE_LIMITED
               message: Demasiadas solicitudes. Intenta de nuevo en un momento.
               details: {}
-
+    NotFound:
+      description: Deletion request was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: DELETION_NOT_FOUND
+              message: No se encontró la solicitud.
+              details: {}
   examples:
     ProcessingAnalysis:
       summary: Analysis while processing
@@ -805,12 +1223,28 @@ components:
     FullReport:
       summary: Full Wrapped
       externalValue: ../fixtures/full-report.json
-
+    me-free:
+      summary: me free
+      externalValue: ../fixtures/me-free.json
+    subscription-active:
+      summary: subscription active
+      externalValue: ../fixtures/subscription-active.json
+    purchase-history:
+      summary: purchase history
+      externalValue: ../fixtures/purchase-history.json
+    monthly-report:
+      summary: monthly report
+      externalValue: ../fixtures/monthly-report.json
+    personal-price-history:
+      summary: personal price history
+      externalValue: ../fixtures/personal-price-history.json
   schemas:
     Health:
       type: object
       additionalProperties: false
-      required: [status, version]
+      required:
+        - status
+        - version
       properties:
         status:
           type: string
@@ -818,11 +1252,18 @@ components:
         version:
           type: string
           minLength: 1
-
     Me:
       type: object
       additionalProperties: false
-      required: [profile_id, anonymous, household_id, entitlements]
+      required:
+        - profile_id
+        - anonymous
+        - verified
+        - household_id
+        - plan
+        - subscription
+        - timezone
+        - usage
       properties:
         profile_id:
           type: string
@@ -832,24 +1273,40 @@ components:
         household_id:
           type: string
           minLength: 1
-        entitlements:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entitlement"
-
+        verified:
+          type: boolean
+          description: True only when the validated Supabase JWT represents a verified
+            permanent identity.
+        plan:
+          type: string
+          enum:
+            - free
+            - one
+        subscription:
+          anyOf:
+            - $ref: "#/components/schemas/Subscription"
+            - type: "null"
+        timezone:
+          type: string
+          minLength: 1
+          description: IANA timezone stored for this owner; initial default is
+            America/Matamoros.
+        usage:
+          $ref: "#/components/schemas/MonthlyUsage"
     CreateAnalysisRequest:
       type: object
       additionalProperties: false
-      required: [mode]
+      required:
+        - mode
       properties:
         mode:
           type: string
           const: free
-
     CreateUploadsRequest:
       type: object
       additionalProperties: false
-      required: [files]
+      required:
+        - files
       properties:
         files:
           type: array
@@ -857,7 +1314,10 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [filename, content_type, size_bytes]
+            required:
+              - filename
+              - content_type
+              - size_bytes
             properties:
               filename:
                 type: string
@@ -873,22 +1333,26 @@ components:
                 exclusiveMinimum: 0
                 maximum: 10485760
                 description: Maximum 10 MiB per receipt file.
-
     CreateUploadsResponse:
       type: object
       additionalProperties: false
-      required: [uploads]
+      required:
+        - uploads
       properties:
         uploads:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [receipt_id, upload_url, expires_at, required_headers]
+            required:
+              - receipt_id
+              - upload_url
+              - expires_at
+              - required_headers
             properties:
               receipt_id:
                 type: string
-                pattern: "^rec_"
+                pattern: ^rec_
               upload_url:
                 type: string
                 format: uri
@@ -901,27 +1365,28 @@ components:
                 type: object
                 additionalProperties:
                   type: string
-
     CompleteUploadsRequest:
       type: object
       additionalProperties: false
-      required: [receipt_ids]
+      required:
+        - receipt_ids
       properties:
         receipt_ids:
           type: array
           minItems: 1
           items:
             type: string
-            pattern: "^rec_"
-
+            pattern: ^rec_
     ProcessResponse:
       type: object
       additionalProperties: false
-      required: [analysis_id, status]
+      required:
+        - analysis_id
+        - status
       properties:
         analysis_id:
           type: string
-          pattern: "^ana_"
+          pattern: ^ana_
         status:
           type: string
           enum:
@@ -931,15 +1396,17 @@ components:
             - generating_report
             - completed
             - failed
-
     Review:
       type: object
       additionalProperties: false
-      required: [analysis_id, total_items, issues]
+      required:
+        - analysis_id
+        - total_items
+        - issues
       properties:
         analysis_id:
           type: string
-          pattern: "^ana_"
+          pattern: ^ana_
         total_items:
           type: integer
           minimum: 0
@@ -947,7 +1414,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReviewIssue"
-
     ReviewIssue:
       type: object
       additionalProperties: false
@@ -964,13 +1430,13 @@ components:
       properties:
         id:
           type: string
-          pattern: "^review_"
+          pattern: ^review_
         receipt_id:
           type: string
-          pattern: "^rec_"
+          pattern: ^rec_
         item_id:
           type: string
-          pattern: "^item_"
+          pattern: ^item_
         raw_label:
           type: string
           description: Original sanitized line. No PII.
@@ -994,21 +1460,24 @@ components:
           oneOf:
             - type: "null"
             - $ref: "#/components/schemas/UpdateReviewIssueRequest"
-
     ReviewIssueSimpleActionRequest:
       type: object
       additionalProperties: false
-      required: [action]
+      required:
+        - action
       properties:
         action:
           type: string
-          enum: [accept, remove, unrecognized]
+          enum:
+            - accept
+            - remove
+            - unrecognized
           description: These actions MUST NOT include edit fields.
-
     ReviewIssueEditRequest:
       type: object
       additionalProperties: false
-      required: [action]
+      required:
+        - action
       properties:
         action:
           type: string
@@ -1025,73 +1494,51 @@ components:
         size_unit:
           type: string
           minLength: 1
-          examples: [L, ml, kg, g, piece, pack]
+          examples:
+            - L
+            - ml
+            - kg
+            - g
+            - piece
+            - pack
         line_total:
           type: number
           description: MXN. JSON number with two decimal places.
       dependentRequired:
-        size_value: [size_unit]
-        size_unit: [size_value]
+        size_value:
+          - size_unit
+        size_unit:
+          - size_value
       anyOf:
-        - required: [product_name]
-        - required: [quantity]
-        - required: [line_total]
-        - required: [size_value, size_unit]
+        - required:
+            - product_name
+        - required:
+            - quantity
+        - required:
+            - line_total
+        - required:
+            - size_value
+            - size_unit
       description: |
         `edit` MUST contain at least one actual correction. `size_value` and
         `size_unit` are valid only as a pair. No additional editable fields.
-
     UpdateReviewIssueRequest:
       oneOf:
         - $ref: "#/components/schemas/ReviewIssueSimpleActionRequest"
         - $ref: "#/components/schemas/ReviewIssueEditRequest"
-
-    Checkout:
-      type: object
-      additionalProperties: false
-      required: [checkout_id, checkout_url, amount_mxn, currency]
-      properties:
-        checkout_id:
-          type: string
-          minLength: 1
-        checkout_url:
-          type: string
-          format: uri
-        amount_mxn:
-          type: number
-          description: Configured FULL_REPORT_PRICE_MXN. JSON number with two decimal places.
-        currency:
-          type: string
-          const: MXN
-
-    Entitlement:
-      type: object
-      additionalProperties: false
-      required: [access, max_receipts, payment_status]
-      properties:
-        analysis_id:
-          type: string
-          pattern: "^ana_"
-          description: Present when the entitlement appears on GET /me. May be omitted on GET /analyses/{analysis_id}/entitlement.
-        access:
-          type: string
-          enum: [free, full]
-        max_receipts:
-          type: integer
-          enum: [3, 15]
-        payment_status:
-          type: string
-          enum: [unpaid, paid, failed]
-
     Error:
       type: object
       additionalProperties: false
-      required: [error]
+      required:
+        - error
       properties:
         error:
           type: object
           additionalProperties: false
-          required: [code, message, details]
+          required:
+            - code
+            - message
+            - details
           properties:
             code:
               type: string
@@ -1113,9 +1560,448 @@ components:
                 - RATE_LIMITED
                 - VALIDATION_ERROR
                 - INTERNAL_ERROR
+                - USAGE_LIMIT_REACHED
+                - SUBSCRIPTION_CONFLICT
+                - SUBSCRIPTION_NOT_FOUND
+                - PURCHASE_NOT_FOUND
+                - PURCHASE_CONFLICT
+                - PRODUCT_NOT_FOUND
+                - ACCOUNT_VERIFICATION_REQUIRED
+                - DELETION_PENDING
+                - DELETION_NOT_FOUND
             message:
               type: string
               description: Mexican Spanish user-facing message. No stack traces.
             details:
               type: object
               additionalProperties: true
+    MonthlyUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - month
+        - allowance
+        - used
+        - reserved
+        - remaining
+        - resets_at
+        - timezone
+      properties:
+        month:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        allowance:
+          type: integer
+          enum:
+            - 5
+            - 100
+        used:
+          type: integer
+          minimum: 0
+        reserved:
+          type: integer
+          minimum: 0
+        remaining:
+          type: integer
+          minimum: 0
+        resets_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          minLength: 1
+    Subscription:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - price_mxn
+        - interval
+        - current_period_end
+        - paid_through
+        - cancel_at_period_end
+        - access
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - past_due
+            - canceled
+            - ended
+        price_mxn:
+          type: string
+          const: "49.00"
+        interval:
+          type: string
+          const: month
+        current_period_end:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        paid_through:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        cancel_at_period_end:
+          type: boolean
+        access:
+          type: string
+          enum:
+            - free
+            - one
+    SubscriptionStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - plan
+        - subscription
+      properties:
+        plan:
+          type: string
+          enum:
+            - free
+            - one
+        subscription:
+          anyOf:
+            - $ref: "#/components/schemas/Subscription"
+            - type: "null"
+    SubscriptionCheckout:
+      type: object
+      additionalProperties: false
+      required:
+        - checkout_url
+        - price_mxn
+        - currency
+        - interval
+      properties:
+        checkout_url:
+          type: string
+          format: uri
+          pattern: ^https://
+        price_mxn:
+          type: string
+          const: "49.00"
+        currency:
+          type: string
+          const: MXN
+        interval:
+          type: string
+          const: month
+    Purchase:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - receipt_id
+        - purchase_date
+        - merchant
+        - product
+        - quantity
+        - line_total_mxn
+        - category_id
+        - variant_id
+        - normalized_unit
+        - updated_at
+      properties:
+        id:
+          type: string
+        receipt_id:
+          type: string
+        purchase_date:
+          anyOf:
+            - type: string
+              format: date
+            - type: "null"
+        merchant:
+          type: string
+        product:
+          type: string
+        quantity:
+          type: string
+          pattern: ^[0-9]+(\.[0-9]+)?$
+        line_total_mxn:
+          type: string
+          pattern: ^[0-9]+\.[0-9]{2}$
+        category_id:
+          type: string
+        variant_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        normalized_unit:
+          anyOf:
+            - type: string
+            - type: "null"
+        updated_at:
+          type: string
+          format: date-time
+    PurchaseCorrection:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        purchase_date:
+          anyOf:
+            - type: string
+              format: date
+            - type: "null"
+        merchant:
+          type: string
+          minLength: 1
+          maxLength: 160
+        product:
+          type: string
+          minLength: 1
+          maxLength: 200
+        quantity:
+          type: string
+          pattern: ^[0-9]+(\.[0-9]+)?$
+        line_total_mxn:
+          type: string
+          pattern: ^[0-9]+\.[0-9]{2}$
+        category_id:
+          type: string
+          maxLength: 100
+        variant_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        normalized_unit:
+          anyOf:
+            - type: string
+            - type: "null"
+        expected_updated_at:
+          type: string
+          format: date-time
+      required:
+        - expected_updated_at
+    PurchasePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - next_cursor
+        - timezone
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/Purchase"
+        next_cursor:
+          anyOf:
+            - type: string
+            - type: "null"
+        timezone:
+          type: string
+    ProductPriceHistory:
+      type: object
+      additionalProperties: false
+      required:
+        - product_id
+        - observations
+        - comparison
+      properties:
+        product_id:
+          type: string
+        observations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - purchase_id
+              - purchase_date
+              - merchant
+              - line_total_mxn
+              - quantity
+              - normalized_unit_price_mxn
+              - normalized_unit
+            properties:
+              purchase_id:
+                type: string
+              purchase_date:
+                anyOf:
+                  - type: string
+                    format: date
+                  - type: "null"
+              merchant:
+                type: string
+              line_total_mxn:
+                type: string
+                pattern: ^[0-9]+\.[0-9]{2}$
+              quantity:
+                type: string
+              normalized_unit_price_mxn:
+                anyOf:
+                  - type: string
+                    pattern: ^[0-9]+\.[0-9]{2}$
+                  - type: "null"
+              normalized_unit:
+                anyOf:
+                  - type: string
+                  - type: "null"
+        comparison:
+          type: string
+          enum:
+            - comparable
+            - insufficient_data
+            - incomparable
+    MonthlyReport:
+      type: object
+      additionalProperties: false
+      required:
+        - month
+        - timezone
+        - receipt_count
+        - dated_receipt_count
+        - undated_receipt_count
+        - total_spent_mxn
+        - category_coverage
+        - unclassified_spending_mxn
+        - reconciliation
+        - categories
+        - merchants
+        - recurring_products
+        - changes
+      properties:
+        month:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        timezone:
+          type: string
+        receipt_count:
+          type: integer
+          minimum: 0
+        dated_receipt_count:
+          type: integer
+          minimum: 0
+        undated_receipt_count:
+          type: integer
+          minimum: 0
+        total_spent_mxn:
+          type: string
+          pattern: ^[0-9]+\.[0-9]{2}$
+        category_coverage:
+          type: number
+          minimum: 0
+          maximum: 1
+        unclassified_spending_mxn:
+          type: string
+          pattern: ^[0-9]+\.[0-9]{2}$
+        reconciliation:
+          type: string
+          enum:
+            - complete
+            - incomplete
+            - discrepant
+        categories:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - category_id
+              - amount_mxn
+              - share
+            properties:
+              category_id:
+                type: string
+              amount_mxn:
+                type: string
+                pattern: ^[0-9]+\.[0-9]{2}$
+              share:
+                type: number
+                minimum: 0
+                maximum: 1
+        merchants:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - merchant
+              - amount_mxn
+              - receipt_count
+            properties:
+              merchant:
+                type: string
+              amount_mxn:
+                type: string
+                pattern: ^[0-9]+\.[0-9]{2}$
+              receipt_count:
+                type: integer
+                minimum: 0
+        recurring_products:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - product
+              - variant_id
+              - normalized_unit
+              - receipt_count
+              - amount_mxn
+            properties:
+              product:
+                type: string
+              variant_id:
+                anyOf:
+                  - type: string
+                  - type: "null"
+              normalized_unit:
+                anyOf:
+                  - type: string
+                  - type: "null"
+              receipt_count:
+                type: integer
+                minimum: 0
+                description: Distinct receipts, not line rows.
+              amount_mxn:
+                type: string
+                pattern: ^[0-9]+\.[0-9]{2}$
+        changes:
+          type: object
+          additionalProperties: false
+          required:
+            - available
+            - reason
+          properties:
+            available:
+              type: boolean
+            reason:
+              anyOf:
+                - type: string
+                  enum:
+                    - insufficient_prior_month_data
+                    - coverage_changed
+                    - no_change
+                - type: "null"
+    DeletionStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - requested_at
+        - completed_at
+      properties:
+        status:
+          type: string
+          enum:
+            - requested
+            - processing
+            - completed
+            - failed
+        requested_at:
+          type: string
+          format: date-time
+        completed_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"

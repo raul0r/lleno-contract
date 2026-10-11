@@ -1,9 +1,9 @@
 # lleno-contract
 
-Canonical product and API contract for Lleno MVP.
+Canonical product and API contract for Lleno One MVP.
 
 **Status:** FROZEN FOR MVP IMPLEMENTATION  
-**Version:** `0.1.3` (see [`VERSION`](./VERSION))
+**Version:** `0.2.0` (see [`VERSION`](./VERSION))
 **Market:** Mexico  
 **Language:** Spanish  
 **Currency:** MXN
@@ -17,7 +17,7 @@ Canonical product and API contract for Lleno MVP.
 Pin this version in both codebases:
 
 ```text
-LLENO_CONTRACT_VERSION=0.1.3
+LLENO_CONTRACT_VERSION=0.2.0
 ```
 
 ## Authority
@@ -97,6 +97,12 @@ Use these as mock API responses. They validate against the JSON schemas.
 | [`fixtures/failed-analysis.json`](./fixtures/failed-analysis.json) | `GET /analyses/{analysis_id}` while `failed` |
 | [`fixtures/free-report.json`](./fixtures/free-report.json) | `GET /analyses/{analysis_id}/report` with `access=free` |
 | [`fixtures/full-report.json`](./fixtures/full-report.json) | `GET /analyses/{analysis_id}/report` with `access=full` |
+| [`fixtures/me-free.json`](./fixtures/me-free.json) | `GET /me` with anonymous Free access and monthly usage |
+| [`fixtures/subscription-active.json`](./fixtures/subscription-active.json) | `GET /subscriptions` with verified One access |
+| [`fixtures/purchase-history.json`](./fixtures/purchase-history.json) | Empty page from `GET /history` |
+| [`fixtures/monthly-report.json`](./fixtures/monthly-report.json) | Sparse, partially classified month from `GET /reports/monthly` |
+| [`fixtures/personal-price-history.json`](./fixtures/personal-price-history.json) | Insufficient observations from `GET /products/{product_id}/prices` |
+| [`fixtures/deletion-requested.json`](./fixtures/deletion-requested.json) | Asynchronous owned account deletion status |
 
 Review-issue payloads live as examples on `GET /analyses/{analysis_id}/review` in the OpenAPI document.
 

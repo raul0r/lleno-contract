@@ -98,7 +98,8 @@
   "full": null,
   "upgrade": {
     "available": true,
-    "price_mxn": 109.0,
-    "max_receipts": 15
+    "price_mxn": 49.0,
+    "interval": "month",
+    "plan": "one"
   }
 }

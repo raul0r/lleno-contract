@@ -20,7 +20,7 @@ A user uploads receipts from purchases made in Mexico. Lleno:
 6. discovers patterns
 7. generates playful consumer-personality content
 8. produces a visual, interactive Wrapped
-9. optionally unlocks deeper analysis through a one-time payment
+9. upgrades the owner's account to One through a recurring monthly subscription
 
 Lleno is **not** an expense tracker.
 
@@ -37,7 +37,7 @@ anonymous session
     ↓
 create analysis
     ↓
-upload 1–3 receipts
+upload receipt documents within monthly allowance
     ↓
 process
     ↓
@@ -47,13 +47,7 @@ FREE WRAPPED
     ↓
 share
     ↓
-offer Complete Analysis
-    ↓
-payment
-    ↓
-optionally add receipts up to 15
-    ↓
-FULL WRAPPED
+use monthly receipt allowance and owned history
 ```
 
 Primary business metric: `free_wrapped_to_paid_conversion`  
@@ -111,12 +105,13 @@ Clients MUST NOT submit arbitrary `user_id` ownership fields. The API derives id
 
 ## Limits
 
-| Constraint | Free | Full (paid, one analysis) |
+| Constraint | Free | One |
 | --- | --- | --- |
-| Analyses a user may create | Multiple free analyses allowed | Entitlement applies to **one** analysis |
-| Receipts per analysis | 1–3 | 15 |
+| Analyses a user may create | Multiple free analyses allowed | Account-level One access |
+| Receipt documents per analysis/job | up to 15 | up to 15 |
 | Formats | JPG, JPEG, PNG, PDF | same |
-| Payment | none | one-time MXN purchase, not a subscription |
+| Monthly successful unique receipts | 5 | 100 initial beta ceiling |
+| Price | none | MXN $49.00 per monthly provider billing cycle |
 
 Do **not** implement a lifetime "one free analysis per person" restriction in MVP.
 
@@ -190,7 +185,6 @@ analytics_events
 
 Do **not** implement:
 
-- subscriptions
 - automatic recurring purchases
 - Amazon purchasing
 - Mercado Libre purchasing
@@ -270,11 +264,13 @@ A brand-new mobile user must be able to:
 7. see a funny data-grounded personality
 8. export/share a safe social card
 9. see that deeper analysis exists
-10. pay once in MXN
-11. unlock Full Analysis
-12. optionally upload additional receipts up to 15
-13. receive an improved report
-14. return later and see simple analysis history
+10. convert to a verified recoverable account before checkout
+11. start Lleno One at MXN $49.00 per monthly provider cycle
+12. receive paid access only after a verified provider payment
+13. use up to the account's remaining 100-document monthly allowance across bounded analysis batches
+14. search owned purchases, view personal observed prices, and read an on-demand monthly report
+15. cancel renewal and retain access through the paid-through timestamp
+16. request account deletion and inspect its completion status
 
 Original receipt images must not survive beyond the configured five-hour maximum.
 

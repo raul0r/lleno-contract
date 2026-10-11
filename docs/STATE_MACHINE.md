@@ -207,19 +207,25 @@ report
 
 The frontend should normally show only ambiguous items, with a count of total vs. needing help (unresolved issues). Unsaved form drafts are not canonical persistence.
 
-## Entitlement and capacity
+## Monthly usage and processing capacity
 
-| Analysis access | `max_receipts` | How it is reached |
-| --- | --- | --- |
-| free | 3 | `POST /analyses` with `{ "mode": "free" }` |
-| full | 15 | verified payment webhook creates entitlement |
+Every analysis has a 15-document processing ceiling. Separately, an owner may
+accept five Free or 100 One documents per owner-local calendar month. Usage is
+atomically reserved across concurrent analyses. Capacity is consumed when a
+sanitized extraction is durably accepted (including items awaiting review), and
+released on terminal rejection/failure before accepted extraction. Retries of
+the same receipt record are idempotent. Exact same-file duplicates by one owner
+inside the same month consume only one slot.
 
-`POST /analyses/{analysis_id}/uploads` MUST reject when remaining capacity is 0 (`RECEIPT_LIMIT_REACHED`).
+`POST /analyses/{analysis_id}/uploads` rejects an exhausted analysis bound with
+`RECEIPT_LIMIT_REACHED`, and an exhausted monthly allowance with
+`USAGE_LIMIT_REACHED`.
 
 Uploading is valid in `created` and `uploading`. Before processing begins, a
 valid slot request may also move `ready_to_process` back to `uploading` when
-capacity remains. `completed` is uploadable only for an entitled paid analysis
-under the 15-receipt cap.
+capacity remains. `completed` may receive additional documents only while the
+account has unused monthly capacity and the analysis remains under its
+15-document cap.
 
 An active pending slot is a `pending_upload` receipt whose
 `upload_expires_at > now()`. Capacity counts confirmed `uploaded` receipts plus
@@ -248,9 +254,10 @@ Minimum fields:
 | `id` | `ana_…` |
 | `mode` | `"free"` at creation. Does not flip on payment. |
 | `status` | analysis state |
-| `max_receipts` | 3, or 15 after entitlement |
+| `max_receipts` | 15-document processing bound; monthly allowance is account-wide |
 | `receipt_count` | receipts accepted so far |
 | `created_at` | ISO 8601 |
 | `progress` | optional, while in-flight |
 
-Payment state is read from `GET /analyses/{analysis_id}/entitlement`, not from `mode`.
+Account plan, subscription and monthly usage are read from `GET /me` and
+`GET /subscriptions`, not from analysis `mode`.

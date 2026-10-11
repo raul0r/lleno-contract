@@ -1,0 +1,12 @@
+{
+  "plan": "one",
+  "subscription": {
+    "status": "active",
+    "price_mxn": "49.00",
+    "interval": "month",
+    "current_period_end": "2026-11-01T05:00:00Z",
+    "paid_through": "2026-11-01T05:00:00Z",
+    "cancel_at_period_end": false,
+    "access": "one"
+  }
+}
