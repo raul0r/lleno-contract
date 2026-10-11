@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lleno API
-  version: 0.2.0
+  version: 0.2.1
   summary: Product API for Lleno One
   description: |
     Canonical HTTP contract for `api.lleno.io`.
@@ -51,7 +51,7 @@ info:
     | RATE_LIMITED | 429 |
     | INTERNAL_ERROR | 500 |
 
-    Contract version: pin `LLENO_CONTRACT_VERSION=0.2.0`.
+    Contract version: pin `LLENO_CONTRACT_VERSION=0.2.1`.
   license:
     name: Proprietary
 servers:
@@ -89,7 +89,7 @@ paths:
                 $ref: "#/components/schemas/Health"
               example:
                 status: ok
-                version: 0.2.0
+                version: 0.2.1
   /me:
     get:
       tags:
@@ -1512,13 +1512,27 @@ components:
       anyOf:
         - required:
             - product_name
+          properties:
+            product_name:
+              type: string
         - required:
             - quantity
+          properties:
+            quantity:
+              type: number
         - required:
             - line_total
+          properties:
+            line_total:
+              type: number
         - required:
             - size_value
             - size_unit
+          properties:
+            size_value:
+              type: number
+            size_unit:
+              type: string
       description: |
         `edit` MUST contain at least one actual correction. `size_value` and
         `size_unit` are valid only as a pair. No additional editable fields.

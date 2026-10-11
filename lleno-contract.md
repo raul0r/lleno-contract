@@ -1,4 +1,4 @@
-# Lleno One — Product & API Contract v0.2.0
+# Lleno One — Product & API Contract v0.2.1
 
 Status: FROZEN FOR MVP IMPLEMENTATION  
 Market: Mexico  
@@ -1525,7 +1525,7 @@ Both codebases pin a known contract version.
 
 Example:
 
-`LLENO_CONTRACT_VERSION=0.2.0`
+`LLENO_CONTRACT_VERSION=0.2.1`
 
 ---
 

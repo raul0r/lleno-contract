@@ -3,7 +3,7 @@
 Canonical product and API contract for Lleno One MVP.
 
 **Status:** FROZEN FOR MVP IMPLEMENTATION  
-**Version:** `0.2.0` (see [`VERSION`](./VERSION))
+**Version:** `0.2.1` (see [`VERSION`](./VERSION))
 **Market:** Mexico  
 **Language:** Spanish  
 **Currency:** MXN
@@ -17,7 +17,7 @@ Canonical product and API contract for Lleno One MVP.
 Pin this version in both codebases:
 
 ```text
-LLENO_CONTRACT_VERSION=0.2.0
+LLENO_CONTRACT_VERSION=0.2.1
 ```
 
 ## Authority
